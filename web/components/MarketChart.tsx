@@ -63,7 +63,7 @@ export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElem
     if (!container) return undefined;
     const chart = createChart(container, {
       width: container.clientWidth || 640,
-      height: 310,
+      height: container.clientHeight || 600,
       layout: { background: { type: ColorType.Solid, color: "#14202a" }, textColor: "#bdc8d2", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: 12 },
       grid: { vertLines: { color: "#2a3945", style: LineStyle.Dotted }, horzLines: { color: "#2a3945", style: LineStyle.Dotted } },
       crosshair: { vertLine: { color: "#687983", width: 1, style: LineStyle.Dashed }, horzLine: { color: "#687983", width: 1, style: LineStyle.Dashed } },
@@ -78,7 +78,7 @@ export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElem
     ma20SeriesRef.current = ma20Series;
     ma60SeriesRef.current = ma60Series;
     const resizeObserver = new ResizeObserver(() => {
-      if (container.clientWidth > 0) chart.applyOptions({ width: container.clientWidth });
+      if (container.clientWidth > 0 && container.clientHeight > 0) chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
     });
     resizeObserver.observe(container);
     return () => {

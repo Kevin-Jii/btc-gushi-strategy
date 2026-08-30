@@ -856,6 +856,25 @@ body {
 @media (max-width: 1050px) { .trading-terminal { grid-template-columns: 1fr; } .terminal-sidebar { border-left: 0; border-top: 1px solid #2a3945; display: grid; grid-template-columns: 1fr 1fr; } .terminal-sidebar .position-card { border-left: 1px solid #2a3945 !important; } }
 @media (max-width: 720px) { .app-content { padding: 0 10px 18px !important; } .workspace-intro { align-items: flex-start; flex-direction: column; } .intro-context { width: 100%; } .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; } .metric-card:nth-child(2) { border-right: 0 !important; } .metric-card:nth-child(-n+2) { border-bottom: 1px solid #2a3945 !important; } .terminal-sidebar, .terminal-footer { display: block; } .terminal-sidebar .position-card, .terminal-footer .ai-card { border-left: 0 !important; border-top: 1px solid #2a3945 !important; } .header-right { display: none; } }
 
+/* ==================== 图表主工作区 ==================== */
+.chart-stage { width: 100%; min-height: calc(100vh - 126px); background: #14202a; border: 1px solid #2a3945; }
+.chart-stage .chart-card { min-height: calc(100vh - 126px); padding: 14px 18px 10px !important; }
+.chart-stage .market-chart-host { min-height: calc(100vh - 210px); height: calc(100vh - 210px); }
+.chart-stage .market-chart { height: 100% !important; }
+.chart-stage .section-heading { display: none; }
+.chart-stage .card-header { min-height: 54px; margin-bottom: 6px; }
+.chart-stage .chart-legend { padding-top: 8px; }
+.semi-sidesheet-inner { background: #111b23 !important; color: var(--text-primary) !important; }
+.semi-sidesheet-header { border-bottom: 1px solid #2a3945 !important; }
+.semi-sidesheet-title { color: var(--text-primary) !important; }
+.drawer-stack { display: flex; flex-direction: column; gap: 14px; }
+.drawer-stack .account-card, .drawer-stack .position-card { padding: 0 !important; border: 0 !important; background: transparent !important; }
+.activity-drawer-source { display: none; }
+.header-actions { display: flex; align-items: center; gap: 2px; }
+.header-actions .semi-button { color: var(--text-secondary); }
+.header-actions .semi-button:hover { color: var(--text-primary); background: var(--bg-hover); }
+@media (max-width: 720px) { .chart-stage, .chart-stage .chart-card { min-height: calc(100vh - 90px); } .chart-stage .market-chart-host { min-height: calc(100vh - 170px); height: calc(100vh - 170px); } .app-header { padding: 0 10px !important; } .header-right { display: flex !important; gap: 4px; } .header-right .connection-status, .header-right > .semi-divider, .mode-indicator > .semi-tag { display: none; } .header-actions { display: flex; } .header-actions .semi-button { padding: 0 6px; } .symbol-selector { max-width: 125px; } }
+
 /* ==================== 工具类 ==================== */
 .positive { color: var(--accent-green) !important; }
 .negative { color: var(--accent-red) !important; }
