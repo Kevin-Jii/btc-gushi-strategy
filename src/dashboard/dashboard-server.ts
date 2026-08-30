@@ -190,6 +190,10 @@ class DashboardRuntime {
     this.addActivity({ type: "system", title: "时间周期已切换", detail: interval });
   }
 
+  public async reviewLatest(): Promise<void> {
+    await this.trader.reviewLatest();
+  }
+
   public async manualTrade(body: string): Promise<void> {
     const parsed = JSON.parse(body) as { side?: unknown; strategyId?: unknown; interval?: unknown };
     const side = parsed.side === "BUY" || parsed.side === "SELL" ? parsed.side : null;
@@ -351,6 +355,11 @@ async function main(): Promise<void> {
       let body = "";
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => { void runtime.switchInterval(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
+      return;
+    }
+    if (url === "/api/ai-review") {
+      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
+      void runtime.reviewLatest().then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
       return;
     }
     if (url === "/api/trade") {

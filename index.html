@@ -3,11 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#111820" />
+    <meta name="theme-color" content="#080B12" />
+    <meta name="description" content="BTC 永续合约量化交易控制台" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
     <title>BTC 葛氏策略控制台</title>
+    <style>
+      html, body { margin: 0; background: #080B12; }
+      #boot-screen { min-height: 100vh; display: grid; place-items: center; color: #7D899B; font: 13px Inter, system-ui, sans-serif; }
+      #boot-screen .boot-inner { display: flex; align-items: center; gap: 10px; }
+      #boot-screen .boot-mark { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #F7931A; color: #16100a; font-weight: 800; }
+      #boot-screen .boot-dot { width: 6px; height: 6px; border-radius: 50%; background: #22D3EE; animation: boot-pulse 1s infinite; }
+      @keyframes boot-pulse { 50% { opacity: .3; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="boot-screen"><div class="boot-inner"><span class="boot-mark">₿</span><span>正在连接交易终端</span><i class="boot-dot"></i></div></div></div>
     <script type="module" src="/web/main.tsx"></script>
   </body>
 </html>

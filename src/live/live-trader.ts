@@ -133,6 +133,13 @@ export class LiveTrader {
     await this.closePosition("manual-sell");
   }
 
+  /** 手动审核最近一根已收盘 K 线，不触发下单。 */
+  public async reviewLatest(): Promise<void> {
+    const closedCandle = [...this.candles].reverse().find((candle) => candle.isClosed !== false) ?? this.latestCandle;
+    if (!closedCandle || !this.latestEvaluation) throw new Error("暂无可审核的已收盘 K 线或策略评估");
+    await this.runAiReview(closedCandle, this.latestEvaluation, true);
+  }
+
   /** 启动前加载足够的历史数据，使 MA120 和 G 规则立即可用。 */
   public async start(historyLimit = 300): Promise<void> {
     try {
