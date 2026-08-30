@@ -8,10 +8,12 @@ import { createStrategyConfig } from "../config/strategy.config.js";
 import type { AccountBalance } from "../exchange/trading-types.js";
 import { LiveTrader } from "../live/live-trader.js";
 import type { LiveTraderAction, LiveTraderStatus } from "../live/live-trader.js";
-import type { DashboardActivity, DashboardState } from "./dashboard-types.js";
+import type { DashboardActivity, DashboardOrder, DashboardState, StrategyDashboardSummary } from "./dashboard-types.js";
 import { logger } from "../utils/logger.js";
 import { createPlatformRuntime, type PlatformRuntime } from "../exchange/platform-factory.js";
 import { createLangChainAdvisorConfig, LangChainAdvisor } from "../ai/langchain-advisor.js";
+import { createPostgresRepository, PostgresRepository } from "../persistence/postgres-repository.js";
+import type { PersistedAiReviewRecord, PersistedOrder, StrategyPerformance } from "../persistence/persistence-types.js";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const webDist = path.join(projectRoot, "web", "dist");
@@ -55,16 +57,20 @@ class DashboardRuntime {
   private previousActionTimestamp = 0;
   private previousAiTimestamp = 0;
   private activity: DashboardActivity[] = [];
+  private orders: DashboardOrder[] = [];
   private instruments: import("../exchange/trading-types.js").SpotInstrument[] = [];
   private refreshing = false;
   private readonly clients = new Set<WebSocket>();
   private readonly trader: LiveTrader;
   private readonly runtime: PlatformRuntime;
   private readonly aiAdvisor: LangChainAdvisor;
+  private readonly repository: PostgresRepository | null;
+  private strategyPerformance = new Map<string, StrategyPerformance>();
 
   public constructor() {
     this.runtime = createPlatformRuntime(process.env, createStrategyConfig());
     this.aiAdvisor = new LangChainAdvisor(createLangChainAdvisorConfig(process.env));
+    this.repository = createPostgresRepository(process.env);
     this.trader = new LiveTrader(this.runtime.client, {
       config: this.runtime.config.strategy,
       symbol: this.runtime.symbol,
@@ -75,10 +81,20 @@ class DashboardRuntime {
       mode: this.runtime.mode,
       adoptExistingPosition: process.env.OKX_ADOPT_EXISTING_POSITION === "true",
       onUpdate: (status) => this.handleTraderUpdate(status),
+      onOrder: (action) => this.repository?.saveOrder({ exchangeOrderId: action.exchangeOrderId, strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", platform: this.runtime.platform, mode: this.runtime.mode, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, executedAt: action.timestamp, ...(action.entryOrderId ? { entryOrderId: action.entryOrderId } : {}), ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) }).then(() => this.refreshPerformance()),
+      onAiReview: (input, result) => this.repository?.saveAiReview({ strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", interval: this.runtime.client.interval ?? this.runtime.interval, input, result }),
     });
   }
 
   public async start(): Promise<void> {
+    if (this.repository) {
+      await this.repository.initialize();
+      const [orders] = await Promise.all([this.repository.loadRecentOrders(100), this.refreshPerformance()]);
+      this.orders = orders.map((order, index) => this.toDashboardOrder(order, index));
+      logger.info(`PostgreSQL 已连接，加载 ${orders.length} 条历史订单`);
+    } else {
+      logger.warn("PostgreSQL 持久化已通过 POSTGRES_ENABLED=false 关闭");
+    }
     const rawLimit = Number(process.env.BINANCE_HISTORY_LIMIT ?? process.env.OKX_HISTORY_LIMIT ?? 300);
     const historyLimit = Number.isInteger(rawLimit) && rawLimit >= 130 && rawLimit <= 1000 ? rawLimit : 300;
     await this.trader.start(historyLimit);
@@ -102,7 +118,7 @@ class DashboardRuntime {
       mode: this.runtime.mode === "testnet" || this.runtime.mode === "demo" ? this.runtime.mode : "live",
       platform: this.runtime.platform,
       symbol: this.trader.symbol,
-      interval: this.runtime.interval,
+      interval: this.runtime.client.interval ?? this.runtime.interval,
       instruments: this.instruments,
       connection: {
         market: status.marketConnected,
@@ -145,12 +161,33 @@ class DashboardRuntime {
         history: status.aiHistory,
       },
       activity: this.activity,
+      strategies: this.strategySummaries(status),
+      orders: this.orders,
     };
+  }
+
+  public async getOrders(query: { limit?: number; strategyId?: string; symbol?: string; side?: "BUY" | "SELL" }): Promise<PersistedOrder[]> {
+    return this.repository ? this.repository.loadOrders(query) : [];
+  }
+
+  public async getAiReviews(query: { limit?: number; strategyId?: string; symbol?: string }): Promise<PersistedAiReviewRecord[]> {
+    return this.repository ? this.repository.loadAiReviews(query) : [];
+  }
+
+  public async getPerformance(strategyId?: string): Promise<StrategyPerformance[]> {
+    return this.repository ? this.repository.loadStrategyPerformance(strategyId) : [];
   }
 
   public async getInstruments(): Promise<import("../exchange/trading-types.js").SpotInstrument[]> {
     this.instruments = await this.runtime.client.getSpotInstruments(this.runtime.quoteAsset);
     return this.instruments;
+  }
+
+  public async switchInterval(body: string): Promise<void> {
+    const parsed = JSON.parse(body) as { interval?: unknown };
+    const interval = typeof parsed.interval === "string" ? parsed.interval : "";
+    await this.trader.switchInterval(interval);
+    this.addActivity({ type: "system", title: "时间周期已切换", detail: interval });
   }
 
   public async switchSymbol(body: string): Promise<void> {
@@ -170,6 +207,7 @@ class DashboardRuntime {
 
   public async stop(): Promise<void> {
     await this.trader.stop();
+    await this.repository?.close();
     for (const socket of this.clients) socket.close();
     this.clients.clear();
   }
@@ -178,6 +216,7 @@ class DashboardRuntime {
     const action = status.lastAction;
     if (action && action.timestamp > this.previousActionTimestamp) {
       this.previousActionTimestamp = action.timestamp;
+      this.orders = [{ id: this.activityId + 1, exchangeOrderId: action.exchangeOrderId, strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", symbol: this.trader.symbol, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, timestamp: action.timestamp, ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) }, ...this.orders].slice(0, 100);
       this.addActivity({
         type: "order",
         side: action.side,
@@ -221,6 +260,26 @@ class DashboardRuntime {
     }
   }
 
+  private strategySummaries(status: LiveTraderStatus): StrategyDashboardSummary[] {
+    const evaluation = status.latestEvaluation;
+    const buy = evaluation?.signal.buy ?? null;
+    const sell = evaluation?.signal.sell ?? null;
+    const performance = this.strategyPerformance.get("gushi-ma");
+    const unrealizedProfit = status.position ? ((status.latestCandle?.close ?? status.position.entryPrice) - status.position.entryPrice) * status.position.quantity : 0;
+    const unrealizedPercent = status.position && status.position.entryPrice > 0 ? (unrealizedProfit / (status.position.entryPrice * status.position.quantity)) * 100 : 0;
+    return [{ id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: status.marketConnected ? "running" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell }];
+  }
+
+  private async refreshPerformance(): Promise<void> {
+    if (!this.repository) return;
+    const rows = await this.repository.loadStrategyPerformance();
+    this.strategyPerformance = new Map(rows.map((row) => [row.strategyId, row]));
+  }
+
+  private toDashboardOrder(order: PersistedOrder, index: number): DashboardOrder {
+    return { id: index + 1, exchangeOrderId: order.exchangeOrderId, strategyId: order.strategyId, strategyName: order.strategyName, symbol: order.symbol, side: order.side, quantity: order.quantity, price: order.price, reason: order.reason, timestamp: order.executedAt, ...(order.realizedProfit !== undefined ? { realizedProfit: order.realizedProfit } : {}), ...(order.realizedProfitPercent !== undefined ? { realizedProfitPercent: order.realizedProfitPercent } : {}) };
+  }
+
   private addActivity(input: Omit<DashboardActivity, "id" | "at">): void {
     this.activity = [{ id: ++this.activityId, at: Date.now(), ...input }, ...this.activity].slice(0, 30);
     this.broadcast();
@@ -238,13 +297,36 @@ async function main(): Promise<void> {
   const runtime = new DashboardRuntime();
   await runtime.start();
   const server = http.createServer((request, response) => {
-    const url = request.url ?? "/";
+    const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
+    const url = requestUrl.pathname;
+    const queryLimit = Number(requestUrl.searchParams.get("limit") ?? "100");
     if (url === "/api/state") {
       json(response, 200, runtime.state());
       return;
     }
     if (url === "/api/instruments") {
       void runtime.getInstruments().then((instruments) => json(response, 200, instruments)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (url === "/api/orders") {
+      const orderQuery = { limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}), ...(requestUrl.searchParams.get("side") === "BUY" || requestUrl.searchParams.get("side") === "SELL" ? { side: requestUrl.searchParams.get("side") as "BUY" | "SELL" } : {}) };
+      void runtime.getOrders(orderQuery).then((orders) => json(response, 200, orders)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (url === "/api/ai-reviews") {
+      const reviewQuery = { limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}) };
+      void runtime.getAiReviews(reviewQuery).then((reviews) => json(response, 200, reviews)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (url === "/api/performance") {
+      void runtime.getPerformance(requestUrl.searchParams.get("strategyId") ?? undefined).then((rows) => json(response, 200, rows)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (url === "/api/interval") {
+      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
+      let body = "";
+      request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => { void runtime.switchInterval(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
       return;
     }
     if (url === "/api/symbol") {

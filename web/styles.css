@@ -857,6 +857,41 @@ body {
 @media (max-width: 720px) { .app-content { padding: 0 10px 18px !important; } .workspace-intro { align-items: flex-start; flex-direction: column; } .intro-context { width: 100%; } .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; } .metric-card:nth-child(2) { border-right: 0 !important; } .metric-card:nth-child(-n+2) { border-bottom: 1px solid #2a3945 !important; } .terminal-sidebar, .terminal-footer { display: block; } .terminal-sidebar .position-card, .terminal-footer .ai-card { border-left: 0 !important; border-top: 1px solid #2a3945 !important; } .header-right { display: none; } }
 
 /* ==================== 图表主工作区 ==================== */
+.market-toolbar { height: 60px; display: flex; align-items: center; gap: 22px; padding: 0 12px; border-bottom: 1px solid #2a3945; }
+.market-identity, .market-price, .market-stats { display: flex; align-items: center; gap: 10px; }
+.market-identity strong { font-size: 19px; color: #fff; }.market-identity small, .market-price span, .market-stats span, .market-identity div small { display: block; color: var(--text-secondary); font-size: 12px; }.asset-logo { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: #111; background: #e0aa4b; font-weight: 800; }.market-price { margin-left: auto; }.market-price strong { font-size: 23px; color: #55c878; }.market-stats { gap: 18px; }.market-stats b { color: #fff; }.connection-live { color: #55c878 !important; }.connection-live i { display: inline-block; width: 6px; height: 6px; background: #55c878; border-radius: 50%; margin-right: 5px; }
+.trading-tool-rail { position: absolute; top: 60px; right: 0; bottom: 0; width: 48px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 14px; border-left: 1px solid #2a3945; background: #101920; z-index: 4; }.trading-tool-rail button { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 4px; color: #9eabb4; background: transparent; cursor: pointer; }.trading-tool-rail button:hover { color: #e8c068; background: #20313c; }
+.data-panel { padding: 8px; color: var(--text-primary); }.data-panel-title { padding: 8px 0 12px; font-size: 15px; font-weight: 700; border-bottom: 1px solid #2a3945; }.strategy-row, .order-row, .order-table-head { display: grid; grid-template-columns: minmax(190px, 1fr) 100px 145px; align-items: center; gap: 12px; padding: 11px 6px; border-bottom: 1px solid #263640; }.strategy-row small, .order-row small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 11px; }.strategy-row > span:last-child { text-align: right; }.order-table-head, .order-row { grid-template-columns: 1.4fr 1fr .8fr .8fr 1fr; }.order-table-head { color: var(--text-secondary); font-size: 11px; }.panel-empty { padding: 40px; color: var(--text-secondary); text-align: center; }
+.chart-stage { position: relative; padding-right: 48px; }.chart-stage .market-toolbar, .chart-stage .card-header, .chart-stage .chart-shell { width: 100%; }.chart-stage .market-chart-host { width: 100% !important; }
+
+/* 截图中出现的窄列来自 Layout/Content 的 flex 宽度没有被明确继承。交易终端必须占满 viewport。 */
+html, body, #root { width: 100%; min-width: 0; min-height: 100%; margin: 0; }
+.app-container { width: 100vw !important; min-width: 0; }
+.app-container > .semi-layout, .app-container > .semi-layout-content, .app-content { width: 100% !important; max-width: none !important; min-width: 0 !important; flex: 1 1 auto !important; }
+.chart-stage { display: block !important; width: 100% !important; min-width: 0 !important; }
+.chart-stage .semi-card, .chart-stage .semi-card-body, .chart-stage .chart-shell, .chart-stage .market-chart-host, .chart-stage .market-chart { display: block !important; width: 100% !important; min-width: 0 !important; }
+.chart-stage .market-chart-host { height: calc(100vh - 172px) !important; min-height: 560px !important; }
+.chart-stage .market-chart { height: 100% !important; }
+.chart-stage .market-chart > canvas { display: block; width: 100% !important; height: 100% !important; }
+.header-nav, .header-nav * { color: #b9c6d0 !important; opacity: 1 !important; }
+.header-nav .semi-nav-item-selected, .header-nav .semi-nav-item-selected * { color: #f0c767 !important; }
+
+/* 最后一层终端覆盖：强制图表链路撑满父级，避免 Semi Card 的默认内容宽度把 K 线压成窄列。 */
+.chart-stage, .chart-stage > *, .chart-stage .semi-card, .chart-stage .semi-card-body, .chart-stage .chart-shell, .chart-stage .market-chart-host { width: 100% !important; max-width: none !important; }
+.chart-stage .semi-card-body { padding: 0 !important; }
+.chart-stage .card-header { padding: 0 2px; }
+.chart-stage .market-chart-host { display: block; }
+.app-header { width: 100%; min-width: 0; }
+.header-nav { flex: 1 1 auto; min-width: 360px; justify-content: center; }
+.header-nav .semi-nav-item { color: #b9c6d0 !important; }
+.header-nav .semi-nav-item .semi-icon, .header-nav .semi-nav-item .semi-nav-item-text { color: inherit !important; opacity: 1 !important; }
+.header-nav .semi-nav-item-selected { color: #e8c068 !important; background: rgba(212,166,74,.12) !important; }
+.header-actions .semi-button-content { color: inherit !important; }
+.mode-indicator { min-width: 220px; justify-content: flex-end; }
+.symbol-selector { min-width: 145px; }
+.symbol-selector .semi-select-selection, .symbol-selector .semi-select-selection-text { color: var(--text-primary) !important; }
+.chart-shell { min-width: 0; }
+
 .chart-stage { width: 100%; min-height: calc(100vh - 126px); background: #14202a; border: 1px solid #2a3945; }
 .chart-stage .chart-card { min-height: calc(100vh - 126px); padding: 14px 18px 10px !important; }
 .chart-stage .market-chart-host { min-height: calc(100vh - 210px); height: calc(100vh - 210px); }
@@ -873,7 +908,7 @@ body {
 .header-actions { display: flex; align-items: center; gap: 2px; }
 .header-actions .semi-button { color: var(--text-secondary); }
 .header-actions .semi-button:hover { color: var(--text-primary); background: var(--bg-hover); }
-@media (max-width: 720px) { .chart-stage, .chart-stage .chart-card { min-height: calc(100vh - 90px); } .chart-stage .market-chart-host { min-height: calc(100vh - 170px); height: calc(100vh - 170px); } .app-header { padding: 0 10px !important; } .header-right { display: flex !important; gap: 4px; } .header-right .connection-status, .header-right > .semi-divider, .mode-indicator > .semi-tag { display: none; } .header-actions { display: flex; } .header-actions .semi-button { padding: 0 6px; } .symbol-selector { max-width: 125px; } }
+@media (max-width: 720px) { .market-toolbar { gap: 8px; padding: 0 6px; }.market-stats { display: none; }.market-price { margin-left: auto; }.market-toolbar > .semi-select { max-width: 92px; }.trading-tool-rail { width: 40px; }.chart-stage { padding-right: 40px; }.chart-stage, .chart-stage .chart-card { .chart-stage .market-chart-host { min-height: calc(100vh - 170px); height: calc(100vh - 170px); } .app-header { padding: 0 10px !important; } .header-right { display: flex !important; gap: 4px; } .header-right .connection-status, .header-right > .semi-divider, .mode-indicator > .semi-tag { display: none; } .header-actions { display: flex; } .header-actions .semi-button { padding: 0 6px; } .symbol-selector { max-width: 125px; } }
 
 /* ==================== 工具类 ==================== */
 .positive { color: var(--accent-green) !important; }

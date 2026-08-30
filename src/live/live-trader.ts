@@ -10,11 +10,15 @@ import type { AiReviewInput, AiValidation } from "../ai/ai-types.js";
 import { LangChainAdvisor } from "../ai/langchain-advisor.js";
 
 export interface LiveTraderAction {
+  exchangeOrderId: string;
   side: "BUY" | "SELL";
   quantity: number;
   price: number;
   reason: string;
   timestamp: number;
+  entryOrderId?: string;
+  realizedProfit?: number;
+  realizedProfitPercent?: number;
 }
 
 export interface LiveTraderStatus {
@@ -42,11 +46,13 @@ export interface LiveTraderOptions {
   mode?: string;
   adoptExistingPosition?: boolean;
   onUpdate?: (status: LiveTraderStatus) => void | Promise<void>;
+  onOrder?: (action: LiveTraderAction) => void | Promise<void>;
+  onAiReview?: (input: AiReviewInput, result: AiValidation) => void | Promise<void>;
 }
 
 /** 将回测策略接到交易所收盘 K 线，订单状态仍以交易所返回为准。 */
 export class LiveTrader {
-  private readonly strategy: StrategyEngine;
+  private strategy: StrategyEngine;
   private executor: OrderExecutor;
   private readonly riskManager = new RiskManager();
   private currentSymbol: string;
@@ -63,6 +69,7 @@ export class LiveTrader {
   private userDataConnected = false;
   private aiValidation: AiValidation | null = null;
   private readonly aiHistory: AiValidation[] = [];
+  private entryOrderId: string | null = null;
 
   public constructor(
     private readonly client: TradingClient,
@@ -75,6 +82,21 @@ export class LiveTrader {
   }
 
   /** 切换交易对；会重置该交易对的行情和本地策略状态。 */
+  public async switchInterval(interval: string, historyLimit = 300): Promise<void> {
+    const normalized = interval.trim();
+    if (!/^(1h|1d|1w|1M|1y)$/.test(normalized)) throw new Error("Unsupported chart interval");
+    if (this.stopMarketStream) await this.stopMarketStream();
+    this.stopMarketStream = null;
+    this.marketConnected = false;
+    this.client.setInterval?.(normalized);
+    this.strategy = new StrategyEngine(this.options.config);
+    this.candles.length = 0;
+    this.latestCandle = null;
+    this.latestEvaluation = null;
+    this.lastCandleTimestamp = 0;
+    await this.start(historyLimit);
+  }
+
   public async switchSymbol(symbol: string, historyLimit = 300): Promise<void> {
     const nextSymbol = symbol.trim().toUpperCase();
     if (!/^[A-Z0-9]+-[A-Z0-9]+$/.test(nextSymbol)) throw new Error("Invalid OKX spot instrument");
@@ -86,12 +108,14 @@ export class LiveTrader {
     this.marketConnected = false;
     this.currentSymbol = nextSymbol;
     this.currentQuoteAsset = nextSymbol.split("-")[1] ?? this.currentQuoteAsset;
+    this.strategy = new StrategyEngine(this.options.config);
     this.executor = new OrderExecutor(this.client, nextSymbol);
     this.candles.length = 0;
     this.latestCandle = null;
     this.latestEvaluation = null;
     this.lastCandleTimestamp = 0;
     this.position = null;
+    this.entryOrderId = null;
     await this.start(historyLimit);
   }
 
@@ -146,9 +170,19 @@ export class LiveTrader {
 
   /** 处理一根已收盘 K 线；未收盘更新不会进入策略。 */
   public async onClosedCandle(candle: Candle): Promise<void> {
-    if (candle.timestamp <= this.lastCandleTimestamp) return;
+    // OKX 推送的是同一根 K 线的增量；未收盘更新只刷新价格和图表，不触发策略或下单。
+    if (candle.timestamp === this.lastCandleTimestamp) {
+      const lastIndex = this.candles.length - 1;
+      if (this.candles[lastIndex]?.timestamp === candle.timestamp) this.candles[lastIndex] = candle;
+      this.latestCandle = candle;
+      // 增量行情只更新当前蜡烛和最新价格；下一根已收盘 K 线再触发策略。
+      this.emitUpdate();
+      return;
+    }
+    if (candle.timestamp < this.lastCandleTimestamp) return;
     this.lastCandleTimestamp = candle.timestamp;
     this.candles.push(candle);
+    if (!candle.isClosed) { this.latestCandle = candle; this.emitUpdate(); return; }
     const evaluation = this.strategy.process(candle);
     this.latestCandle = candle;
     this.latestEvaluation = evaluation;
@@ -214,6 +248,7 @@ export class LiveTrader {
     this.aiValidation = result;
     this.aiHistory.unshift({ ...result, evidence: [...result.evidence], risks: [...result.risks] });
     if (this.aiHistory.length > 30) this.aiHistory.length = 30;
+    await this.persistSafely("AI 审核", () => this.options.onAiReview?.(input, result));
     this.emitUpdate();
     return result;
   }
@@ -225,7 +260,9 @@ export class LiveTrader {
     const fill = await this.executor.buyWithQuote(quoteAmount);
     if (fill.executedQuantity <= 0 || fill.averagePrice <= 0) throw new Error("交易所买单没有成交");
     this.position = { side: "long", entryPrice: fill.averagePrice || price, quantity: fill.executedQuantity, entryTimestamp: fill.transactTime, entryBarIndex: this.candles.length - 1, peakPrice: fill.averagePrice || price };
-    this.lastAction = { side: "BUY", quantity: fill.executedQuantity, price: fill.averagePrice || price, reason, timestamp: fill.transactTime };
+    this.entryOrderId = fill.orderId;
+    this.lastAction = { exchangeOrderId: fill.orderId, side: "BUY", quantity: fill.executedQuantity, price: fill.averagePrice || price, reason, timestamp: fill.transactTime };
+    await this.persistSafely("买入订单", () => this.options.onOrder?.(this.lastAction as LiveTraderAction));
     logger.info(`BUY ${this.currentSymbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
     this.emitUpdate();
   }
@@ -235,11 +272,23 @@ export class LiveTrader {
     const position = this.position;
     const fill = await this.executor.sellQuantity(position.quantity);
     if (fill.executedQuantity > 0) {
+      const realizedProfit = (fill.averagePrice - position.entryPrice) * fill.executedQuantity;
+      const realizedProfitPercent = position.entryPrice > 0 ? ((fill.averagePrice - position.entryPrice) / position.entryPrice) * 100 : 0;
       this.position = null;
       this.riskManager.registerExit(this.candles.length - 1);
-      this.lastAction = { side: "SELL", quantity: fill.executedQuantity, price: fill.averagePrice, reason, timestamp: fill.transactTime };
+      this.lastAction = { exchangeOrderId: fill.orderId, side: "SELL", quantity: fill.executedQuantity, price: fill.averagePrice, reason, timestamp: fill.transactTime, ...(this.entryOrderId ? { entryOrderId: this.entryOrderId } : {}), realizedProfit, realizedProfitPercent };
+      this.entryOrderId = null;
+      await this.persistSafely("卖出订单", () => this.options.onOrder?.(this.lastAction as LiveTraderAction));
       logger.info(`SELL ${this.currentSymbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
       this.emitUpdate();
+    }
+  }
+
+  private async persistSafely(label: string, operation: () => void | Promise<void> | undefined): Promise<void> {
+    try {
+      await operation();
+    } catch (error) {
+      logger.error(`${label}已成交/生成，但 PostgreSQL 保存失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

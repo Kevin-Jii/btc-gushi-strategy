@@ -10,6 +10,11 @@ const asNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+function intervalToBar(interval: string): string {
+  const known: Record<string, string> = { "1h": "1H", "1d": "1D", "1w": "1W", "1M": "1M", "1y": "1Y" };
+  return known[interval] ?? interval;
+}
+
 function intervalMilliseconds(interval: string): number {
   const match = interval.toLowerCase().match(/^(\d+)(m|h|d|w)$/);
   if (!match) return 24 * 60 * 60 * 1000;
@@ -25,13 +30,18 @@ function baseAsset(instId: string, quoteAsset: string): string {
 
 /** OKX REST/WebSocket 适配层，使用 OKX V5 签名接口并保持与策略层相同的交易契约。 */
 export class OkxClient implements TradingClient {
-  public readonly interval: string;
+  public interval: string;
   private readonly restBase = "https://www.okx.com";
   private readonly baseAssetName: string;
 
   public constructor(private readonly config: OkxConfig) {
     this.interval = config.interval;
     this.baseAssetName = baseAsset(config.instId, config.quoteAsset);
+  }
+
+  public setInterval(interval: string): void {
+    this.interval = interval;
+    this.config.bar = intervalToBar(interval);
   }
 
   public async getSpotInstruments(quoteAsset?: string): Promise<SpotInstrument[]> {
@@ -129,9 +139,10 @@ export class OkxClient implements TradingClient {
       const message = this.parse(raw);
       if (message?.arg && (message.arg as JsonRecord).channel === channel && Array.isArray(message.data)) {
         const row = (message.data as unknown[][])[0];
-        if (!row || String(row[8] ?? "0") !== "1") return;
+        if (!row) return;
         const timestamp = asNumber(row[0]);
-        void onCandle({ timestamp, closeTime: timestamp + intervalMilliseconds(interval) - 1, open: asNumber(row[1]), high: asNumber(row[2]), low: asNumber(row[3]), close: asNumber(row[4]), volume: asNumber(row[5]) });
+        const isClosed = String(row[8] ?? "0") === "1";
+        void onCandle({ timestamp, isClosed, closeTime: timestamp + intervalMilliseconds(interval) - 1, open: asNumber(row[1]), high: asNumber(row[2]), low: asNumber(row[3]), close: asNumber(row[4]), volume: asNumber(row[5]) });
       }
     };
     socket.on("message", listener);

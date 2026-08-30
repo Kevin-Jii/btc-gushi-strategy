@@ -4,6 +4,9 @@ export interface Candle {
   /** Binance REST K 线提供的收盘时间；CSV 数据没有该字段。 */
   closeTime?: number;
 
+  /** WebSocket K 线是否已收盘；实时未收盘 K 线用于价格跳动展示。 */
+  isClosed?: boolean;
+
   open: number;
   high: number;
   low: number;

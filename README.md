@@ -35,7 +35,8 @@ from `targetPercent` in `src/config/strategy.config.ts`.
 - `src/exchange`: Binance and OKX Spot REST/WebSocket adapters, symbol filters, and order precision.
 - `src/live`: close-only K-line strategy runner with balance/order synchronization.
 - `src/ai`: LangChain 结构化策略审核器；默认关闭，可配置为建议或入场否决模式。
-- `src/dashboard`: dashboard server, state aggregation, REST `/api/state`, and browser WebSocket `/ws`.
+- `src/dashboard`: dashboard server, state aggregation, REST `/api/state`, `/api/orders`, `/api/ai-reviews`, `/api/performance`, and browser WebSocket `/ws`.
+- `src/persistence`: PostgreSQL schema/repository for confirmed orders, AI reviews, and realized performance.
 - `web/components`: independent React panels for market chart, assets, position, activity, metrics, AI审核、top bar, and sidebar。
 
 Useful checks:
@@ -87,7 +88,9 @@ frontend. Open `http://127.0.0.1:5173`; Vite proxies `/api` and `/ws` to the
 backend on port `8787`.
 
 The backend-only command remains available as `npm run dashboard` for server
-diagnostics. Backtesting remains available through
+diagnostics. PostgreSQL persistence is enabled by default; set `DATABASE_URL` to your PostgreSQL connection string. For a local database, run `docker compose up -d postgres` after copying `.env.example` to `.env`. To intentionally run without persistence, set `POSTGRES_ENABLED=false`. The schema is applied automatically at dashboard startup. Historical replay APIs support filters such as `/api/orders?symbol=BTC-USDT&side=SELL&limit=100`, `/api/ai-reviews?limit=100`, and `/api/performance?strategyId=gushi-ma`.
+
+Backtesting remains available through
 `npm run backtest -- data/btc-usdt/BTCUSDT-1d.csv`.
 
 ## OKX Demo and live trading

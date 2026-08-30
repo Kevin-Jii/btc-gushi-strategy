@@ -3,6 +3,34 @@ import type { Candle, Position } from "../data/types.js";
 import type { LiveTraderAction } from "../live/live-trader.js";
 import type { AiDecisionMode, AiValidation } from "../ai/ai-types.js";
 
+export interface StrategyDashboardSummary {
+  id: string;
+  name: string;
+  version: string;
+  category: string;
+  status: "running" | "paused" | "stopped";
+  profit: number;
+  profitPercent: number;
+  orderCount: number;
+  buySignal: string | null;
+  sellSignal: string | null;
+}
+
+export interface DashboardOrder {
+  id: number;
+  exchangeOrderId: string;
+  strategyId: string;
+  strategyName: string;
+  symbol: string;
+  side: "BUY" | "SELL";
+  quantity: number;
+  price: number;
+  reason: string;
+  timestamp: number;
+  realizedProfit?: number;
+  realizedProfitPercent?: number;
+}
+
 export interface DashboardActivity {
   id: number;
   at: number;
@@ -60,4 +88,6 @@ export interface DashboardState {
     history: AiValidation[];
   };
   activity: DashboardActivity[];
+  strategies: StrategyDashboardSummary[];
+  orders: DashboardOrder[];
 }

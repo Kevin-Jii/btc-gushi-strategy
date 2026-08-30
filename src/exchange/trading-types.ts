@@ -55,8 +55,11 @@ export interface UserDataEvent {
 
 /** 交易客户端接口 */
 export interface TradingClient {
-  /** K 线间隔 */
+  /** 当前 K 线间隔 */
   interval?: string;
+
+  /** 切换 K 线间隔 */
+  setInterval?(interval: string): void;
 
   /** 获取交易对规则 */
   getSymbolRules(symbol: string): Promise<SymbolRules>;
