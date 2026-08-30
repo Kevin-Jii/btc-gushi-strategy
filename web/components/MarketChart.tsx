@@ -64,8 +64,8 @@ export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElem
     const chart = createChart(container, {
       width: container.clientWidth || 640,
       height: Math.max(container.clientHeight || 600, 420),
-      layout: { background: { type: ColorType.Solid, color: "#14202a" }, textColor: "#bdc8d2", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: 12 },
-      grid: { vertLines: { color: "#2a3945", style: LineStyle.Dotted }, horzLines: { color: "#2a3945", style: LineStyle.Dotted } },
+      layout: { background: { type: ColorType.Solid, color: "#0F141D" }, textColor: "#7D899B", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: 12 },
+      grid: { vertLines: { color: "#1E293B", style: LineStyle.Dotted }, horzLines: { color: "#1E293B", style: LineStyle.Dotted } },
       crosshair: { vertLine: { color: "#687983", width: 1, style: LineStyle.Dashed }, horzLine: { color: "#687983", width: 1, style: LineStyle.Dashed } },
       rightPriceScale: { borderColor: "#52636f", scaleMargins: { top: 0.08, bottom: 0.08 }, textColor: "#d6e0e7" },
       timeScale: { borderColor: "#52636f", timeVisible: true, secondsVisible: false, rightOffset: 3, barSpacing: 8, tickMarkFormatter: (time) => new Date(Number(time) * 1000).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) },
@@ -78,6 +78,9 @@ export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElem
     ma20SeriesRef.current = ma20Series;
     ma60SeriesRef.current = ma60Series;
     const resizeObserver = new ResizeObserver(() => {
+      if (container.clientWidth > 0 && container.clientHeight > 0) chart.applyOptions({ width: container.clientWidth, height: Math.max(container.clientHeight, 420) });
+    });
+    requestAnimationFrame(() => {
       if (container.clientWidth > 0 && container.clientHeight > 0) chart.applyOptions({ width: container.clientWidth, height: Math.max(container.clientHeight, 420) });
     });
     resizeObserver.observe(container);

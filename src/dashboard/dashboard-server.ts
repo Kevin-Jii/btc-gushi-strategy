@@ -190,6 +190,11 @@ class DashboardRuntime {
     this.addActivity({ type: "system", title: "时间周期已切换", detail: interval });
   }
 
+  public async manualTrade(side: "BUY" | "SELL"): Promise<void> {
+    if (side === "BUY") await this.trader.manualBuy();
+    else await this.trader.manualSell();
+  }
+
   public async switchSymbol(body: string): Promise<void> {
     const parsed = JSON.parse(body) as { symbol?: unknown };
     const symbol = typeof parsed.symbol === "string" ? parsed.symbol.toUpperCase() : "";
@@ -327,6 +332,20 @@ async function main(): Promise<void> {
       let body = "";
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => { void runtime.switchInterval(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
+      return;
+    }
+    if (url === "/api/trade") {
+      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
+      let body = "";
+      request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => {
+        try {
+          const parsed = JSON.parse(body) as { side?: unknown };
+          const side = parsed.side === "BUY" || parsed.side === "SELL" ? parsed.side : null;
+          if (!side) throw new Error("交易方向无效");
+          void runtime.manualTrade(side).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
+        } catch (error) { json(response, 400, { error: error instanceof Error ? error.message : String(error) }); }
+      });
       return;
     }
     if (url === "/api/symbol") {

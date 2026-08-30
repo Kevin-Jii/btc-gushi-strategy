@@ -122,6 +122,17 @@ export class LiveTrader {
   public get symbol(): string { return this.currentSymbol; }
   public get quoteAsset(): string { return this.currentQuoteAsset; }
 
+  /** 手动交易入口，供受控 Dashboard 操作使用。 */
+  public async manualBuy(): Promise<void> {
+    if (this.position) throw new Error("当前已有持仓，不能重复买入");
+    await this.openPosition(this.latestCandle?.close ?? 0, "manual-buy");
+  }
+
+  public async manualSell(): Promise<void> {
+    if (!this.position) throw new Error("当前没有可卖出的持仓");
+    await this.closePosition("manual-sell");
+  }
+
   /** 启动前加载足够的历史数据，使 MA120 和 G 规则立即可用。 */
   public async start(historyLimit = 300): Promise<void> {
     try {
@@ -253,7 +264,7 @@ export class LiveTrader {
     return result;
   }
 
-  private async openPosition(price: number, reason: Exclude<GushiBuySignal, null>): Promise<void> {
+  private async openPosition(price: number, reason: string): Promise<void> {
     const balances = await this.client.getBalances();
     const quote = balances.find((balance) => balance.asset === this.currentQuoteAsset);
     const quoteAmount = (quote?.free ?? 0) * this.options.positionFraction;
