@@ -330,7 +330,8 @@ export class LangChainAdvisor {
     十一、输出要求
     ====================
     
-    严格遵守结构化输出 Schema。
+    严格遵守结构化输出 Schema，并且只输出一个合法的 JSON 对象，不要输出 Markdown 或 JSON 代码块。
+    JSON 对象必须包含 recommendation、confidence、ruleStatus、summary、evidence、risks、invalidation 这些字段。
     
     summary：
     简洁说明最终审核结论。
@@ -397,7 +398,7 @@ export class LangChainAdvisor {
     5. 持仓状态是否一致；
     6. 是否存在明显风险或数据矛盾。
     
-    然后输出结构化结果。`,
+    然后只输出符合上述 Schema 的 JSON 结果。`,
       ],
     ]);
     this.chain = prompt.pipe(structuredModel);
