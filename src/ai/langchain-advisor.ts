@@ -91,16 +91,25 @@ export class LangChainAdvisor {
       this.chain = null;
       return;
     }
+    const isDeepSeek = config.baseUrl?.includes("deepseek.com") ?? false;
     const model = new ChatOpenAI({
       apiKey: config.apiKey,
       model: config.model,
       temperature: 0,
       ...(config.baseUrl ? { configuration: { baseURL: config.baseUrl } } : {}),
+      // DeepSeek 等 OpenAI 兼容服务不支持 json_schema，使用 json_object。
+      ...(isDeepSeek
+        ? { modelKwargs: { response_format: { type: "json_object" } } }
+        : {}),
     });
-    const structuredModel = model.withStructuredOutput(validationSchema, {
-      name: "gushi_strategy_validation",
-      strict: true,
-    });
+    // 返回内容仍由下方 Zod schema 校验，避免模型输出越过审计边界。
+    // 两条输出路径的 LangChain 泛型不同，统一为 prompt.pipe 可接受的 Runnable 类型。
+    const structuredModel = (isDeepSeek
+      ? model
+      : model.withStructuredOutput(validationSchema, {
+        name: "gushi_strategy_validation",
+        strict: true,
+      })) as any;
     const prompt = ChatPromptTemplate.fromMessages([
       [
         "system",
@@ -423,7 +432,7 @@ export class LangChainAdvisor {
       volume: candle.volume,
     }));
     try {
-      const result = (await this.chain!.invoke({
+      const rawResult = await this.chain!.invoke({
         platform: input.platform,
         mode: input.mode,
         symbol: input.symbol,
@@ -436,7 +445,8 @@ export class LangChainAdvisor {
           context: input.evaluation.context,
         }),
         position: JSON.stringify(input.position),
-      })) as ModelValidation;
+      });
+      const result = this.parseModelResult(rawResult);
       return this.normalize(result, "langchain");
     } catch (error) {
       return {
@@ -454,6 +464,15 @@ export class LangChainAdvisor {
         model: this.modelName,
       };
     }
+  }
+
+  private parseModelResult(raw: unknown): ModelValidation {
+    if (typeof raw === "object" && raw !== null && "content" in raw) {
+      const content = (raw as { content?: unknown }).content;
+      const text = Array.isArray(content) ? content.map((part) => typeof part === "string" ? part : JSON.stringify(part)).join("") : String(content ?? "");
+      return validationSchema.parse(JSON.parse(text));
+    }
+    return validationSchema.parse(raw);
   }
 
   private normalize(
