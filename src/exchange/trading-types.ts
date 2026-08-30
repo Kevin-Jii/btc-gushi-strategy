@@ -29,6 +29,7 @@ export interface SpotInstrument {
   quantityStep: number;
   minQuantity: number;
   minNotional: number;
+  contractValue?: number;
 }
 
 /** 交易对规则 */
@@ -41,6 +42,7 @@ export interface SymbolRules {
   maxQuantity: number;
   priceTick: number;
   minNotional: number;
+  contractValue?: number;
 }
 
 /** 用户数据事件 */

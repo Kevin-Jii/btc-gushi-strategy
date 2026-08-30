@@ -14,6 +14,7 @@ export interface OkxConfig {
   quoteAsset: string;
   positionFraction: number;
   strategy: StrategyConfig;
+  instrumentType: "SWAP" | "SPOT";
 }
 
 function required(name: string, value: string | undefined): string {
@@ -40,7 +41,9 @@ export function createOkxConfig(
   }
   const positionFraction = numberEnv("OKX_POSITION_FRACTION", env.OKX_POSITION_FRACTION, strategy.targetPercent);
   if (positionFraction <= 0 || positionFraction > 1) throw new Error("OKX_POSITION_FRACTION must be in the range (0, 1]");
-  const instId = (env.OKX_INST_ID ?? "BTC-USDT").trim().toUpperCase();
+  const instrumentType = (env.OKX_INSTRUMENT_TYPE ?? "SWAP").trim().toUpperCase();
+  if (instrumentType !== "SWAP" && instrumentType !== "SPOT") throw new Error("OKX_INSTRUMENT_TYPE must be SWAP or SPOT");
+  const instId = (env.OKX_INST_ID ?? (instrumentType === "SWAP" ? "BTC-USDT-SWAP" : "BTC-USDT")).trim().toUpperCase();
   const interval = (env.OKX_INTERVAL ?? "1d").trim();
   return {
     mode,
@@ -53,6 +56,7 @@ export function createOkxConfig(
     quoteAsset: (env.OKX_QUOTE_ASSET ?? instId.split("-")[1] ?? "USDT").trim().toUpperCase(),
     positionFraction,
     strategy,
+    instrumentType,
   };
 }
 

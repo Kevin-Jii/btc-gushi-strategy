@@ -101,7 +101,7 @@ class DashboardRuntime {
     try { this.instruments = await this.runtime.client.getSpotInstruments(this.runtime.quoteAsset); } catch (error) { logger.warn(`加载 OKX 交易对失败：${error instanceof Error ? error.message : String(error)}`); }
     await this.refreshAccount();
     this.addActivity({ type: "system", title: "交易服务已启动", detail: `${this.runtime.platform.toUpperCase()} ${this.runtime.mode} · ${this.trader.symbol} · ${this.runtime.interval}` });
-    setInterval(() => { void this.refreshAccount(); }, 3000);
+    setInterval(() => { void this.refreshAccount(); void this.persistMonitorSnapshot(); }, 3000);
   }
 
   public state(): DashboardState {
@@ -190,9 +190,17 @@ class DashboardRuntime {
     this.addActivity({ type: "system", title: "时间周期已切换", detail: interval });
   }
 
-  public async manualTrade(side: "BUY" | "SELL"): Promise<void> {
-    if (side === "BUY") await this.trader.manualBuy();
-    else await this.trader.manualSell();
+  public async manualTrade(body: string): Promise<void> {
+    const parsed = JSON.parse(body) as { side?: unknown; strategyId?: unknown; interval?: unknown };
+    const side = parsed.side === "BUY" || parsed.side === "SELL" ? parsed.side : null;
+    if (!side) throw new Error("交易方向无效");
+    if (side === "BUY") {
+      if (parsed.strategyId !== "gushi-ma") throw new Error("买入前必须选择有效策略");
+      const interval = typeof parsed.interval === "string" ? parsed.interval : "";
+      if (!["1h", "1d", "1w", "1M", "1y"].includes(interval)) throw new Error("策略不允许该时间周期");
+      if (interval !== (this.runtime.client.interval ?? this.runtime.interval)) await this.trader.switchInterval(interval);
+      await this.trader.manualBuy();
+    } else await this.trader.manualSell();
   }
 
   public async switchSymbol(body: string): Promise<void> {
@@ -275,6 +283,17 @@ class DashboardRuntime {
     return [{ id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: status.marketConnected ? "running" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell }];
   }
 
+  private async persistMonitorSnapshot(): Promise<void> {
+    if (!this.repository) return;
+    const status = this.trader.getStatus();
+    const candle = status.latestCandle;
+    const position = status.position;
+    const markPrice = candle?.close ?? 0;
+    const unrealizedProfit = position ? (markPrice - position.entryPrice) * position.quantity : 0;
+    const terminationCondition = position ? `固定止损 ${(this.runtime.config.strategy.stopLossPct * 100).toFixed(2)}% · 移动止损 ${(this.runtime.config.strategy.trailingStopPct * 100).toFixed(2)}% · 峰值激活 ${(this.runtime.config.strategy.trailingActivationProfit * 100).toFixed(2)}%` : "无持仓：等待策略入场信号";
+    try { await this.repository.saveMonitorSnapshot({ strategyId: "gushi-ma", symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, timestamp: Date.now(), equity: this.state().account.estimatedEquity, unrealizedProfit, positionQuantity: position?.quantity ?? 0, entryPrice: position?.entryPrice ?? 0, markPrice, terminationCondition, signal: status.latestEvaluation?.signal.buy ?? status.latestEvaluation?.signal.sell ?? "NONE" }); } catch (error) { logger.warn(`策略监控快照保存失败：${error instanceof Error ? error.message : String(error)}`); }
+  }
+
   private async refreshPerformance(): Promise<void> {
     if (!this.repository) return;
     const rows = await this.repository.loadStrategyPerformance();
@@ -340,10 +359,7 @@ async function main(): Promise<void> {
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => {
         try {
-          const parsed = JSON.parse(body) as { side?: unknown };
-          const side = parsed.side === "BUY" || parsed.side === "SELL" ? parsed.side : null;
-          if (!side) throw new Error("交易方向无效");
-          void runtime.manualTrade(side).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
+          void runtime.manualTrade(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
         } catch (error) { json(response, 400, { error: error instanceof Error ? error.message : String(error) }); }
       });
       return;

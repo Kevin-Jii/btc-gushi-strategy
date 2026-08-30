@@ -28,6 +28,20 @@ export interface PersistedAiReview {
   result: AiValidation;
 }
 
+export interface StrategyMonitorSnapshot {
+  strategyId: string;
+  symbol: string;
+  interval: string;
+  timestamp: number;
+  equity: number;
+  unrealizedProfit: number;
+  positionQuantity: number;
+  entryPrice: number;
+  markPrice: number;
+  terminationCondition: string;
+  signal: string;
+}
+
 export interface StrategyPerformance {
   strategyId: string;
   realizedProfit: number;
@@ -60,6 +74,7 @@ export interface TradingPersistence {
   initialize(): Promise<void>;
   saveOrder(order: PersistedOrder): Promise<void>;
   saveAiReview(review: PersistedAiReview): Promise<void>;
+  saveMonitorSnapshot(snapshot: StrategyMonitorSnapshot): Promise<void>;
   loadRecentOrders(limit?: number): Promise<PersistedOrder[]>;
   loadOrders(query?: OrderQuery): Promise<PersistedOrder[]>;
   loadAiReviews(query?: AiReviewQuery): Promise<PersistedAiReviewRecord[]>;

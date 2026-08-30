@@ -45,7 +45,7 @@ export class OkxClient implements TradingClient {
   }
 
   public async getSpotInstruments(quoteAsset?: string): Promise<SpotInstrument[]> {
-    const response = await this.publicRequest("/api/v5/public/instruments", { instType: "SPOT" });
+    const response = await this.publicRequest("/api/v5/public/instruments", { instType: this.config.instrumentType });
     const rows = Array.isArray(response.data) ? response.data as JsonRecord[] : [];
     return rows.flatMap((row): SpotInstrument[] => {
       const symbol = String(row.instId ?? "");
@@ -61,12 +61,13 @@ export class OkxClient implements TradingClient {
         quantityStep: asNumber(row.lotSz ?? row.minSz),
         minQuantity: asNumber(row.minSz),
         minNotional: asNumber(row.minSz),
+        contractValue: this.config.instrumentType === "SWAP" ? asNumber(row.ctVal, 1) : 1,
       }];
     }).sort((left, right) => left.symbol.localeCompare(right.symbol));
   }
 
   public async getSymbolRules(symbol: string): Promise<SymbolRules> {
-    const response = await this.publicRequest("/api/v5/public/instruments", { instType: "SPOT", instId: symbol });
+    const response = await this.publicRequest("/api/v5/public/instruments", { instType: this.config.instrumentType, instId: symbol });
     const row = this.firstRow(response);
     const quantityStep = asNumber(row.lotSz ?? row.minSz, 0);
     if (quantityStep <= 0) throw new Error(`OKX returned no valid lot size for ${symbol}`);
@@ -79,6 +80,7 @@ export class OkxClient implements TradingClient {
       maxQuantity: asNumber(row.maxLmtSz ?? row.maxMktSz, Number.POSITIVE_INFINITY),
       priceTick: asNumber(row.tickSz),
       minNotional: 0,
+      contractValue: this.config.instrumentType === "SWAP" ? asNumber(row.ctVal, 1) : 1,
     };
   }
 
@@ -95,12 +97,24 @@ export class OkxClient implements TradingClient {
 
   public async marketBuy(symbol: string, quoteOrderQty: number): Promise<OrderFill> {
     if (quoteOrderQty <= 0) throw new Error("Buy amount must be positive");
-    return this.placeMarketOrder(symbol, "buy", quoteOrderQty, "quote_ccy");
+    if (this.config.instrumentType === "SPOT") return this.placeMarketOrder(symbol, "buy", quoteOrderQty, "quote_ccy");
+    const rules = await this.getSymbolRules(symbol);
+    const ticker = await this.publicRequest("/api/v5/market/ticker", { instId: symbol });
+    const price = asNumber(this.firstRow(ticker).last);
+    const contracts = Math.floor((quoteOrderQty / Math.max(price, 1)) / Math.max(rules.contractValue ?? 1, 1e-12));
+    if (contracts < rules.minQuantity) throw new Error(`合约张数不足最小下单量：${contracts} < ${rules.minQuantity}`);
+    const fill = await this.placeMarketOrder(symbol, "buy", contracts * rules.quantityStep, "quote_ccy");
+    return { ...fill, executedQuantity: fill.executedQuantity * Math.max(rules.contractValue ?? 1, 1e-12) };
   }
 
   public async marketSell(symbol: string, quantity: number): Promise<OrderFill> {
     if (quantity <= 0) throw new Error("Sell quantity must be positive");
-    return this.placeMarketOrder(symbol, "sell", quantity, "base_ccy");
+    if (this.config.instrumentType === "SPOT") return this.placeMarketOrder(symbol, "sell", quantity, "base_ccy");
+    const rules = await this.getSymbolRules(symbol);
+    const contracts = Math.floor((quantity / Math.max(rules.contractValue ?? 1, 1e-12)) / Math.max(rules.quantityStep, 1e-12)) * rules.quantityStep;
+    if (contracts < rules.minQuantity) throw new Error(`合约张数不足最小下单量：${contracts} < ${rules.minQuantity}`);
+    const fill = await this.placeMarketOrder(symbol, "sell", contracts, "base_ccy");
+    return { ...fill, executedQuantity: fill.executedQuantity * Math.max(rules.contractValue ?? 1, 1e-12) };
   }
 
   public async getOrder(symbol: string, orderId: string): Promise<OrderFill> {
@@ -182,7 +196,7 @@ export class OkxClient implements TradingClient {
 
   private async placeMarketOrder(symbol: string, side: "buy" | "sell", size: number, targetCurrency: "quote_ccy" | "base_ccy"): Promise<OrderFill> {
     const response = await this.privateRequest("POST", "/api/v5/trade/order", {
-      instId: symbol, tdMode: "cash", side, ordType: "market", sz: String(size), tgtCcy: targetCurrency,
+      instId: symbol, tdMode: this.config.instrumentType === "SWAP" ? "cross" : "cash", side, ordType: "market", sz: String(size), ...(this.config.instrumentType === "SPOT" ? { tgtCcy: targetCurrency } : { posSide: "net" }),
     });
     const row = this.firstRow(response);
     const orderId = String(row.ordId ?? "");

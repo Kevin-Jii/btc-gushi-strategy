@@ -56,3 +56,19 @@ CREATE INDEX IF NOT EXISTS ai_reviews_strategy_time_idx
   ON ai_strategy_reviews (strategy_id, generated_at DESC);
 CREATE INDEX IF NOT EXISTS ai_reviews_symbol_time_idx
   ON ai_strategy_reviews (symbol, generated_at DESC);
+
+CREATE TABLE IF NOT EXISTS strategy_monitor_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  strategy_id TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  candle_interval TEXT NOT NULL,
+  recorded_at TIMESTAMPTZ NOT NULL,
+  equity NUMERIC(36, 18) NOT NULL,
+  unrealized_profit NUMERIC(36, 18) NOT NULL,
+  position_quantity NUMERIC(36, 18) NOT NULL,
+  entry_price NUMERIC(36, 18) NOT NULL,
+  mark_price NUMERIC(36, 18) NOT NULL,
+  termination_condition TEXT NOT NULL,
+  strategy_signal TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS strategy_monitor_time_idx ON strategy_monitor_snapshots (strategy_id, symbol, recorded_at DESC);

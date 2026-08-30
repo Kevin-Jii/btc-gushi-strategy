@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolConfig } from "pg";
-import type { AiReviewQuery, PersistedAiReview, PersistedAiReviewRecord, PersistedOrder, OrderQuery, StrategyPerformance, TradingPersistence } from "./persistence-types.js";
+import type { AiReviewQuery, PersistedAiReview, PersistedAiReviewRecord, PersistedOrder, OrderQuery, StrategyMonitorSnapshot, StrategyPerformance, TradingPersistence } from "./persistence-types.js";
 
 function finiteNumber(value: string | number | null | undefined): number {
   const parsed = Number(value ?? 0);
@@ -70,6 +70,10 @@ export class PostgresRepository implements TradingPersistence {
         JSON.stringify({ candle: input.candle, recentCandles: input.recentCandles, position: input.position }),
         new Date(result.generatedAt)],
     );
+  }
+
+  public async saveMonitorSnapshot(snapshot: StrategyMonitorSnapshot): Promise<void> {
+    await this.pool.query(`INSERT INTO strategy_monitor_snapshots (strategy_id,symbol,candle_interval,recorded_at,equity,unrealized_profit,position_quantity,entry_price,mark_price,termination_condition,strategy_signal) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [snapshot.strategyId, snapshot.symbol, snapshot.interval, new Date(snapshot.timestamp), snapshot.equity, snapshot.unrealizedProfit, snapshot.positionQuantity, snapshot.entryPrice, snapshot.markPrice, snapshot.terminationCondition, snapshot.signal]);
   }
 
   public async loadRecentOrders(limit = 100): Promise<PersistedOrder[]> {

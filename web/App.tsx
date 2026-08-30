@@ -11,7 +11,6 @@ import { PositionCard } from "./components/dashboard/PositionCard";
 import { OrderHistoryPanel } from "./components/dashboard/OrderHistoryPanel";
 import { StrategyPanel } from "./components/dashboard/StrategyPanel";
 import { TradingToolRail } from "./components/dashboard/TradingToolRail";
-import "./styles.css";
 
 const emptyState: DashboardState = { updatedAt: 0, mode: "demo", platform: "okx", symbol: "BTC-USDT", interval: "1d", instruments: [], connection: { market: false, userData: false, lastAccountUpdate: 0, error: null }, market: { latestPrice: 0, latestCandle: null, recentCandles: [], candleCount: 0, lastCandleTimestamp: 0 }, strategy: { buy: null, sell: null, trendFilter: null, entrySignal: null, support: null, resistance: null }, account: { balances: [], quoteAsset: "USDT", quoteFree: 0, quoteLocked: 0, baseAsset: "BTC", baseFree: 0, baseLocked: 0, estimatedEquity: 0 }, position: null, lastAction: null, activity: [], strategies: [], orders: [], ai: { enabled: false, decisionMode: "advisory", model: "gpt-4o-mini", latest: null, history: [] } };
 
