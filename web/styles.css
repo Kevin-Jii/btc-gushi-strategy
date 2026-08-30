@@ -113,3 +113,10 @@ h1, h2, p { margin: 0; }.page-heading h1 { font-size: 25px; letter-spacing: -.02
 .bui-history-confidence { color: #c7d3d7; text-align: right; }
 @media (max-width: 1000px) { .bui-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.bui-generated { margin-left: 0; }.bui-recommendation { align-items: flex-start; flex-direction: column; }.bui-confidence { width: 100%; } }
 .activity-icon.ai { background: #25251f; color: #d8b05a; }
+
+/* Lightweight Charts 使用 Canvas；容器尺寸固定，避免图表初始化时布局跳动。 */
+.market-chart-host { position: relative; width: 100%; height: 310px; overflow: hidden; }
+.market-chart-host .market-chart { width: 100%; height: 310px; display: block; }
+.market-chart-host .empty-chart { position: absolute; inset: 0; background: #121b23; }
+.legend-dot.candle { width: 7px; height: 7px; border-radius: 1px; background: #e3edf0; }
+.legend-dot.level { background: #d6a64b; }

@@ -119,6 +119,8 @@ class DashboardRuntime {
         sell: strategy?.signal.sell ?? null,
         trendFilter: strategy?.trendFilter ?? null,
         entrySignal: strategy?.entrySignal ?? null,
+        support: strategy?.context.support ?? null,
+        resistance: strategy?.context.resistance ?? null,
       },
       account: {
         balances: this.balances,

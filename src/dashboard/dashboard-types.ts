@@ -36,6 +36,8 @@ export interface DashboardState {
     sell: string | null;
     trendFilter: boolean | null;
     entrySignal: boolean | null;
+    support: number | null;
+    resistance: number | null;
   };
   account: {
     balances: AccountBalance[];

@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@binance/spot": "^32.0.2",
+    "@douyinfe/semi-ui": "^2.102.0",
     "@langchain/core": "^1.2.9",
     "@langchain/mcp-adapters": "^1.1.4",
     "@langchain/openai": "^1.5.10",
@@ -44,6 +45,7 @@
     "decimal.js": "^10.6.0",
     "dotenv": "^17.4.2",
     "langchain": "^1.5.10",
+    "lightweight-charts": "^5.2.1",
     "lucide-react": "^1.34.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
