@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { createStrategyConfig } from "../config/strategy.config.js";
-import type { AccountBalance } from "../exchange/binance-types.js";
+import type { AccountBalance } from "../exchange/trading-types.js";
 import { LiveTrader } from "../live/live-trader.js";
 import type { LiveTraderAction, LiveTraderStatus } from "../live/live-trader.js";
 import type { DashboardActivity, DashboardState } from "./dashboard-types.js";
@@ -55,6 +55,7 @@ class DashboardRuntime {
   private previousActionTimestamp = 0;
   private previousAiTimestamp = 0;
   private activity: DashboardActivity[] = [];
+  private instruments: import("../exchange/trading-types.js").SpotInstrument[] = [];
   private refreshing = false;
   private readonly clients = new Set<WebSocket>();
   private readonly trader: LiveTrader;
@@ -72,7 +73,7 @@ class DashboardRuntime {
       aiAdvisor: this.aiAdvisor,
       platform: this.runtime.platform,
       mode: this.runtime.mode,
-      adoptExistingPosition: process.env.BINANCE_ADOPT_EXISTING_POSITION === "true",
+      adoptExistingPosition: process.env.OKX_ADOPT_EXISTING_POSITION === "true",
       onUpdate: (status) => this.handleTraderUpdate(status),
     });
   }
@@ -81,8 +82,9 @@ class DashboardRuntime {
     const rawLimit = Number(process.env.BINANCE_HISTORY_LIMIT ?? process.env.OKX_HISTORY_LIMIT ?? 300);
     const historyLimit = Number.isInteger(rawLimit) && rawLimit >= 130 && rawLimit <= 1000 ? rawLimit : 300;
     await this.trader.start(historyLimit);
+    try { this.instruments = await this.runtime.client.getSpotInstruments(this.runtime.quoteAsset); } catch (error) { logger.warn(`加载 OKX 交易对失败：${error instanceof Error ? error.message : String(error)}`); }
     await this.refreshAccount();
-    this.addActivity({ type: "system", title: "交易服务已启动", detail: `${this.runtime.platform.toUpperCase()} ${this.runtime.mode} · ${this.runtime.symbol} · ${this.runtime.interval}` });
+    this.addActivity({ type: "system", title: "交易服务已启动", detail: `${this.runtime.platform.toUpperCase()} ${this.runtime.mode} · ${this.trader.symbol} · ${this.runtime.interval}` });
     setInterval(() => { void this.refreshAccount(); }, 3000);
   }
 
@@ -90,8 +92,8 @@ class DashboardRuntime {
     const status = this.trader.getStatus();
     const strategy = status.latestEvaluation;
     const rules = this.balances;
-    const quote = rules.find((balance) => balance.asset === this.runtime.quoteAsset);
-    const baseAsset = this.runtime.platform === "okx" ? this.runtime.symbol.split("-")[0] ?? "BTC" : this.runtime.symbol.replace(this.runtime.quoteAsset, "") || "BTC";
+    const quote = rules.find((balance) => balance.asset === this.trader.quoteAsset);
+    const baseAsset = this.trader.symbol.split("-")[0] ?? "";
     const base = rules.find((balance) => balance.asset === baseAsset);
     const latestPrice = status.latestCandle?.close ?? 0;
     const estimatedEquity = (quote?.free ?? 0) + (quote?.locked ?? 0) + ((base?.free ?? 0) + (base?.locked ?? 0)) * latestPrice;
@@ -99,8 +101,9 @@ class DashboardRuntime {
       updatedAt: Date.now(),
       mode: this.runtime.mode === "testnet" || this.runtime.mode === "demo" ? this.runtime.mode : "live",
       platform: this.runtime.platform,
-      symbol: this.runtime.symbol,
+      symbol: this.trader.symbol,
       interval: this.runtime.interval,
+      instruments: this.instruments,
       connection: {
         market: status.marketConnected,
         userData: status.userDataConnected,
@@ -124,7 +127,7 @@ class DashboardRuntime {
       },
       account: {
         balances: this.balances,
-        quoteAsset: this.runtime.quoteAsset,
+        quoteAsset: this.trader.quoteAsset,
         quoteFree: quote?.free ?? 0,
         quoteLocked: quote?.locked ?? 0,
         baseAsset,
@@ -143,6 +146,19 @@ class DashboardRuntime {
       },
       activity: this.activity,
     };
+  }
+
+  public async getInstruments(): Promise<import("../exchange/trading-types.js").SpotInstrument[]> {
+    this.instruments = await this.runtime.client.getSpotInstruments(this.runtime.quoteAsset);
+    return this.instruments;
+  }
+
+  public async switchSymbol(body: string): Promise<void> {
+    const parsed = JSON.parse(body) as { symbol?: unknown };
+    const symbol = typeof parsed.symbol === "string" ? parsed.symbol.toUpperCase() : "";
+    if (!this.instruments.some((instrument) => instrument.symbol === symbol)) throw new Error(`交易对不可交易或不在 OKX 现货列表中：${symbol}`);
+    await this.trader.switchSymbol(symbol);
+    this.addActivity({ type: "system", title: "交易对已切换", detail: `${this.runtime.platform.toUpperCase()} · ${symbol}` });
   }
 
   public addClient(socket: WebSocket): void {
@@ -165,7 +181,7 @@ class DashboardRuntime {
       this.addActivity({
         type: "order",
         side: action.side,
-        title: `${action.side === "BUY" ? "买入" : "卖出"} ${this.runtime.symbol}`,
+        title: `${action.side === "BUY" ? "买入" : "卖出"} ${this.trader.symbol}`,
         detail: `${formatNumber(action.quantity)} · ${formatNumber(action.price)} · ${action.reason}`,
       });
     }
@@ -195,7 +211,7 @@ class DashboardRuntime {
       this.lastAccountUpdate = Date.now();
       this.accountError = null;
       if (changed && this.previousBalance.size > 0) {
-        this.addActivity({ type: "balance", title: "账户余额已更新", detail: `${this.runtime.quoteAsset} 可用 ${formatNumber(next.find((row) => row.asset === this.runtime.quoteAsset)?.free ?? 0)}` });
+        this.addActivity({ type: "balance", title: "账户余额已更新", detail: `${this.trader.quoteAsset} 可用 ${formatNumber(next.find((row) => row.asset === this.trader.quoteAsset)?.free ?? 0)}` });
       }
     } catch (error) {
       this.accountError = error instanceof Error ? error.message : String(error);
@@ -225,6 +241,17 @@ async function main(): Promise<void> {
     const url = request.url ?? "/";
     if (url === "/api/state") {
       json(response, 200, runtime.state());
+      return;
+    }
+    if (url === "/api/instruments") {
+      void runtime.getInstruments().then((instruments) => json(response, 200, instruments)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (url === "/api/symbol") {
+      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
+      let body = "";
+      request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => { void runtime.switchSymbol(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
       return;
     }
     if (url === "/api/health") {

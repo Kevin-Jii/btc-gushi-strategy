@@ -2,8 +2,8 @@ import type { StrategyConfig } from "../config/strategy.config.js";
 import type { Candle, GushiBuySignal, Position } from "../data/types.js";
 import { evaluateRiskExit, RiskManager } from "../risk/risk-manager.js";
 import { StrategyEngine } from "../strategy/strategy.js";
-import type { TradingClient } from "../exchange/binance-types.js";
-import { BinanceOrderExecutor } from "../exchange/order-executor.js";
+import type { TradingClient } from "../exchange/trading-types.js";
+import { OrderExecutor } from "../exchange/order-executor.js";
 import { logger } from "../utils/logger.js";
 import type { StrategyEvaluation } from "../strategy/strategy.js";
 import type { AiReviewInput, AiValidation } from "../ai/ai-types.js";
@@ -47,8 +47,10 @@ export interface LiveTraderOptions {
 /** 将回测策略接到交易所收盘 K 线，订单状态仍以交易所返回为准。 */
 export class LiveTrader {
   private readonly strategy: StrategyEngine;
-  private readonly executor: BinanceOrderExecutor;
+  private executor: OrderExecutor;
   private readonly riskManager = new RiskManager();
+  private currentSymbol: string;
+  private currentQuoteAsset: string;
   private readonly candles: Candle[] = [];
   private position: Position | null = null;
   private stopMarketStream: (() => Promise<void>) | null = null;
@@ -67,8 +69,34 @@ export class LiveTrader {
     private readonly options: LiveTraderOptions,
   ) {
     this.strategy = new StrategyEngine(options.config);
-    this.executor = new BinanceOrderExecutor(client, options.symbol);
+    this.currentSymbol = options.symbol;
+    this.currentQuoteAsset = options.quoteAsset;
+    this.executor = new OrderExecutor(client, this.currentSymbol);
   }
+
+  /** 切换交易对；会重置该交易对的行情和本地策略状态。 */
+  public async switchSymbol(symbol: string, historyLimit = 300): Promise<void> {
+    const nextSymbol = symbol.trim().toUpperCase();
+    if (!/^[A-Z0-9]+-[A-Z0-9]+$/.test(nextSymbol)) throw new Error("Invalid OKX spot instrument");
+    if (this.stopMarketStream) await this.stopMarketStream();
+    if (this.stopUserStream) await this.stopUserStream();
+    this.stopMarketStream = null;
+    this.stopUserStream = null;
+    this.userDataConnected = false;
+    this.marketConnected = false;
+    this.currentSymbol = nextSymbol;
+    this.currentQuoteAsset = nextSymbol.split("-")[1] ?? this.currentQuoteAsset;
+    this.executor = new OrderExecutor(this.client, nextSymbol);
+    this.candles.length = 0;
+    this.latestCandle = null;
+    this.latestEvaluation = null;
+    this.lastCandleTimestamp = 0;
+    this.position = null;
+    await this.start(historyLimit);
+  }
+
+  public get symbol(): string { return this.currentSymbol; }
+  public get quoteAsset(): string { return this.currentQuoteAsset; }
 
   /** 启动前加载足够的历史数据，使 MA120 和 G 规则立即可用。 */
   public async start(historyLimit = 300): Promise<void> {
@@ -79,7 +107,7 @@ export class LiveTrader {
     }
     let history: Candle[];
     try {
-      history = await this.client.loadCandles(this.options.symbol, this.client.interval ?? "1d", historyLimit);
+      history = await this.client.loadCandles(this.currentSymbol, this.client.interval ?? "1d", historyLimit);
     } catch (error) {
       throw new Error(`加载历史 K 线失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -93,7 +121,7 @@ export class LiveTrader {
     if (latest && this.options.adoptExistingPosition) await this.syncExistingPosition(latest.close);
 
     try {
-      this.stopMarketStream = await this.client.subscribeKlines(this.options.symbol, this.client.interval ?? "1d", (candle) => this.onClosedCandle(candle));
+      this.stopMarketStream = await this.client.subscribeKlines(this.currentSymbol, this.client.interval ?? "1d", (candle) => this.onClosedCandle(candle));
       this.marketConnected = true;
     } catch (error) {
       throw new Error(`建立行情 WebSocket 订阅失败：${error instanceof Error ? error.message : String(error)}`);
@@ -101,7 +129,7 @@ export class LiveTrader {
     try {
       this.stopUserStream = await this.client.subscribeUserData((event) => {
         // 成交/余额事件到达后重新读取账户，避免仅依赖本地状态。
-        if (event.symbol === this.options.symbol && event.orderStatus === "FILLED") {
+        if (event.symbol === this.currentSymbol && event.orderStatus === "FILLED") {
           void this.refreshPositionFromBalance();
         }
       });
@@ -112,7 +140,7 @@ export class LiveTrader {
       this.stopUserStream = null;
       this.userDataConnected = false;
     }
-    logger.info(`Live trader started for ${this.options.symbol}`);
+    logger.info(`Live trader started for ${this.currentSymbol}`);
     this.emitUpdate();
   }
 
@@ -173,8 +201,8 @@ export class LiveTrader {
     const advisor = this.options.aiAdvisor;
     if (!advisor) return null;
     const input: AiReviewInput = {
-      symbol: this.options.symbol,
-      platform: this.options.platform ?? "binance",
+      symbol: this.currentSymbol,
+      platform: this.options.platform ?? "okx",
       mode: this.options.mode ?? "unknown",
       candle,
       recentCandles: this.candles.slice(-30),
@@ -192,13 +220,13 @@ export class LiveTrader {
 
   private async openPosition(price: number, reason: Exclude<GushiBuySignal, null>): Promise<void> {
     const balances = await this.client.getBalances();
-    const quote = balances.find((balance) => balance.asset === this.options.quoteAsset);
+    const quote = balances.find((balance) => balance.asset === this.currentQuoteAsset);
     const quoteAmount = (quote?.free ?? 0) * this.options.positionFraction;
     const fill = await this.executor.buyWithQuote(quoteAmount);
     if (fill.executedQuantity <= 0 || fill.averagePrice <= 0) throw new Error("交易所买单没有成交");
     this.position = { side: "long", entryPrice: fill.averagePrice || price, quantity: fill.executedQuantity, entryTimestamp: fill.transactTime, entryBarIndex: this.candles.length - 1, peakPrice: fill.averagePrice || price };
     this.lastAction = { side: "BUY", quantity: fill.executedQuantity, price: fill.averagePrice || price, reason, timestamp: fill.transactTime };
-    logger.info(`BUY ${this.options.symbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
+    logger.info(`BUY ${this.currentSymbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
     this.emitUpdate();
   }
 
@@ -210,14 +238,14 @@ export class LiveTrader {
       this.position = null;
       this.riskManager.registerExit(this.candles.length - 1);
       this.lastAction = { side: "SELL", quantity: fill.executedQuantity, price: fill.averagePrice, reason, timestamp: fill.transactTime };
-      logger.info(`SELL ${this.options.symbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
+      logger.info(`SELL ${this.currentSymbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
       this.emitUpdate();
     }
   }
 
   /** 重启时可选择接管已有 BTC；默认关闭，避免误接管人工持仓。 */
   private async syncExistingPosition(markPrice: number): Promise<void> {
-    const rules = await this.client.getSymbolRules(this.options.symbol);
+    const rules = await this.client.getSymbolRules(this.currentSymbol);
     const balances = await this.client.getBalances();
     const base = balances.find((balance) => balance.asset === rules.baseAsset);
     const quantity = base?.free ?? 0;
@@ -229,7 +257,7 @@ export class LiveTrader {
 
   private async refreshPositionFromBalance(): Promise<void> {
     if (!this.position) return;
-    const rules = await this.client.getSymbolRules(this.options.symbol);
+    const rules = await this.client.getSymbolRules(this.currentSymbol);
     const balances = await this.client.getBalances();
     const base = balances.find((balance) => balance.asset === rules.baseAsset);
     const quantity = base?.free ?? 0;

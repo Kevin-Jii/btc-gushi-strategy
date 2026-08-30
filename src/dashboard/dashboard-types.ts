@@ -1,4 +1,4 @@
-import type { AccountBalance } from "../exchange/binance-types.js";
+import type { AccountBalance, SpotInstrument } from "../exchange/trading-types.js";
 import type { Candle, Position } from "../data/types.js";
 import type { LiveTraderAction } from "../live/live-trader.js";
 import type { AiDecisionMode, AiValidation } from "../ai/ai-types.js";
@@ -15,9 +15,10 @@ export interface DashboardActivity {
 export interface DashboardState {
   updatedAt: number;
   mode: "testnet" | "demo" | "live";
-  platform: "binance" | "okx";
+  platform: "okx";
   symbol: string;
   interval: string;
+  instruments: SpotInstrument[];
   connection: {
     market: boolean;
     userData: boolean;

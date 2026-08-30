@@ -1,0 +1,9 @@
+import { Card, Tag, Typography } from "@douyinfe/semi-ui";
+import { TrendingDown, TrendingUp } from "lucide-react";
+import type { ReactElement } from "react";
+import type { DashboardState } from "../../../src/dashboard/dashboard-types";
+import { MarketChart } from "../MarketChart";
+import { formatMoney } from "../ui";
+const { Text, Title } = Typography;
+export function MarketOverview({ state }: { state: DashboardState }): ReactElement { return <><div className="section-heading chart-heading"><div><span className="eyebrow">MARKET INTELLIGENCE</span><Title heading={4}>行情与信号</Title></div><span className="section-note">均线、关键价位与策略触发点</span></div><Card className="chart-card" shadows="hover"><div className="card-header"><div className="card-title"><Title heading={5}>{state.symbol} 行情</Title><div className="price-display"><span className="current-price">{state.market.latestPrice ? formatMoney(state.market.latestPrice) : "--"}</span><span className="quote-asset">{state.account.quoteAsset}</span></div></div><div className="signal-indicators"><Signal label="买入" signal={state.strategy.buy} type="buy" /><Signal label="卖出" signal={state.strategy.sell} type="sell" /></div></div><MarketChart state={state} levels={[...(state.strategy.support ? [{ price: state.strategy.support, title: "支撑位", color: "#d6a64b" }] : []), ...(state.strategy.resistance ? [{ price: state.strategy.resistance, title: "阻力位", color: "#79a7c4" }] : [])]} /></Card></>; }
+function Signal({ label, signal, type }: { label: string; signal: string | null; type: "buy" | "sell" }): ReactElement { return <div className="signal-item"><Text type="tertiary" size="small">{label}</Text>{signal ? <Tag color={type === "buy" ? "green" : "red"} size="small" icon={type === "buy" ? <TrendingUp size={12} /> : <TrendingDown size={12} />}>{signal}</Tag> : <Tag size="small">--</Tag>}</div>; }

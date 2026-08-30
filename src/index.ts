@@ -1,3 +1,8 @@
+/**
+ * BTC 葛氏策略命令行入口
+ * 支持回测和 OKX 实盘
+ */
+
 import "dotenv/config";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -6,8 +11,6 @@ import { runBacktest } from "./backtest/backtest-engine.js";
 import { formatPerformance } from "./backtest/performance.js";
 import { logger } from "./utils/logger.js";
 import { createStrategyConfig } from "./config/strategy.config.js";
-import { createBinanceConfig } from "./exchange/binance-config.js";
-import { BinanceClient } from "./exchange/binance-client.js";
 import { LiveTrader } from "./live/live-trader.js";
 import { createPlatformRuntime } from "./exchange/platform-factory.js";
 import { createLangChainAdvisorConfig, LangChainAdvisor } from "./ai/langchain-advisor.js";
@@ -51,39 +54,13 @@ export function main(argv: string[] = process.argv): number {
   }
 }
 
-/** 启动 Binance 收盘 K 线实时策略；默认由 npm run testnet 调用。 */
-export async function runLiveCommand(mode: "testnet" | "live"): Promise<void> {
-  const env: NodeJS.ProcessEnv = { ...process.env, BINANCE_MODE: mode };
-  const config = createBinanceConfig(env, createStrategyConfig());
-  const client = new BinanceClient(config);
-  const aiAdvisor = new LangChainAdvisor(createLangChainAdvisorConfig(env));
-  const trader = new LiveTrader(client, {
-    config: config.strategy,
-    symbol: config.symbol,
-    quoteAsset: config.quoteAsset,
-    positionFraction: config.positionFraction,
-    aiAdvisor,
-    platform: "binance",
-    mode,
-    adoptExistingPosition: env.BINANCE_ADOPT_EXISTING_POSITION === "true",
-  });
-  const historyLimit = optionalNumber(env.BINANCE_HISTORY_LIMIT) ?? 300;
-  if (!Number.isInteger(historyLimit) || historyLimit < 130 || historyLimit > 1000) {
-    throw new Error("BINANCE_HISTORY_LIMIT must be an integer between 130 and 1000");
-  }
-  await trader.start(historyLimit);
-  logger.info(`Binance ${mode} stream is running. Press Ctrl+C to stop.`);
-  const shutdown = async (): Promise<void> => {
-    await trader.stop();
-    process.exitCode = 0;
-  };
-  process.once("SIGINT", () => { void shutdown(); });
-  process.once("SIGTERM", () => { void shutdown(); });
-}
-
-/** 启动 OKX 现货策略；默认使用 OKX 模拟盘，避免误触真实资金。 */
+/** 启动 OKX 现货策略 */
 export async function runOkxCommand(mode?: "demo" | "live"): Promise<void> {
-  const env: NodeJS.ProcessEnv = { ...process.env, TRADING_PLATFORM: "okx", ...(mode ? { OKX_MODE: mode } : {}) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    TRADING_PLATFORM: "okx",
+    ...(mode ? { OKX_MODE: mode } : {})
+  };
   const runtime = createPlatformRuntime(env, createStrategyConfig());
   const aiAdvisor = new LangChainAdvisor(createLangChainAdvisorConfig(env));
   const trader = new LiveTrader(runtime.client, {
@@ -96,7 +73,7 @@ export async function runOkxCommand(mode?: "demo" | "live"): Promise<void> {
     mode: runtime.mode,
     adoptExistingPosition: env.OKX_ADOPT_EXISTING_POSITION === "true",
   });
-  const historyLimit = optionalNumber(env.OKX_HISTORY_LIMIT ?? env.BINANCE_HISTORY_LIMIT) ?? 300;
+  const historyLimit = optionalNumber(env.OKX_HISTORY_LIMIT) ?? 300;
   if (!Number.isInteger(historyLimit) || historyLimit < 130 || historyLimit > 1000) {
     throw new Error("OKX_HISTORY_LIMIT must be an integer between 130 and 1000");
   }
@@ -113,13 +90,7 @@ export async function runOkxCommand(mode?: "demo" | "live"): Promise<void> {
 // 被测试或仪表盘导入时，不要自动运行 CLI。
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const command = process.argv[2];
-  if (command === "testnet" || command === "live") {
-    void runLiveCommand(command).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(message);
-      process.exitCode = 1;
-    });
-  } else if (command === "okx" || command === "okx-demo" || command === "okx-live") {
+  if (command === "okx" || command === "okx-demo" || command === "okx-live") {
     const mode = command === "okx-demo" ? "demo" : command === "okx-live" ? "live" : undefined;
     void runOkxCommand(mode).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

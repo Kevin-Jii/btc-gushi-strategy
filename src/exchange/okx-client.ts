@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import WebSocket from "ws";
 import type { Candle } from "../data/types.js";
-import type { AccountBalance, BinanceTradingClient, OrderFill, SymbolRules, UserDataEvent } from "./binance-types.js";
+import type { AccountBalance, OrderFill, SpotInstrument, SymbolRules, TradingClient, UserDataEvent } from "./trading-types.js";
 import type { OkxConfig } from "./okx-config.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -24,7 +24,7 @@ function baseAsset(instId: string, quoteAsset: string): string {
 }
 
 /** OKX REST/WebSocket 适配层，使用 OKX V5 签名接口并保持与策略层相同的交易契约。 */
-export class OkxClient implements BinanceTradingClient {
+export class OkxClient implements TradingClient {
   public readonly interval: string;
   private readonly restBase = "https://www.okx.com";
   private readonly baseAssetName: string;
@@ -32,6 +32,27 @@ export class OkxClient implements BinanceTradingClient {
   public constructor(private readonly config: OkxConfig) {
     this.interval = config.interval;
     this.baseAssetName = baseAsset(config.instId, config.quoteAsset);
+  }
+
+  public async getSpotInstruments(quoteAsset?: string): Promise<SpotInstrument[]> {
+    const response = await this.publicRequest("/api/v5/public/instruments", { instType: "SPOT" });
+    const rows = Array.isArray(response.data) ? response.data as JsonRecord[] : [];
+    return rows.flatMap((row): SpotInstrument[] => {
+      const symbol = String(row.instId ?? "");
+      const state = String(row.state ?? "");
+      const quote = String(row.quoteCcy ?? "").toUpperCase();
+      if (!symbol || state !== "live" || (quoteAsset && quote !== quoteAsset.toUpperCase())) return [];
+      return [{
+        symbol,
+        baseAsset: String(row.baseCcy ?? symbol.split("-")[0] ?? ""),
+        quoteAsset: quote,
+        state,
+        tickSize: asNumber(row.tickSz),
+        quantityStep: asNumber(row.lotSz ?? row.minSz),
+        minQuantity: asNumber(row.minSz),
+        minNotional: asNumber(row.minSz),
+      }];
+    }).sort((left, right) => left.symbol.localeCompare(right.symbol));
   }
 
   public async getSymbolRules(symbol: string): Promise<SymbolRules> {
@@ -134,11 +155,10 @@ export class OkxClient implements BinanceTradingClient {
       const row = (Array.isArray(message?.data) ? message.data[0] : undefined) as JsonRecord | undefined;
       if (!row || !arg || arg.channel !== "orders") return;
       const event: UserDataEvent = {
-        eventType: "executionReport",
         ...(typeof row.instId === "string" ? { symbol: row.instId } : {}),
         ...(typeof row.state === "string" ? { orderStatus: row.state.toUpperCase() } : {}),
-        executedQuantity: asNumber(row.fillSz ?? row.accFillSz),
-        cumulativeQuantity: asNumber(row.accFillSz),
+        executedQty: asNumber(row.fillSz ?? row.accFillSz),
+        price: 0,
       };
       void onEvent(event);
     };

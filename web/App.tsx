@@ -1,69 +1,23 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ReactElement } from "react";
-import { Activity, BarChart3, CircleDollarSign, ShieldCheck, Wallet } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
+import { Layout } from "@douyinfe/semi-ui";
 import type { DashboardState } from "../src/dashboard/dashboard-types";
-import { AccountPanel } from "./components/AccountPanel";
-import { ActivityPanel } from "./components/ActivityPanel";
-import { AiAdvisorPanel } from "./components/AiAdvisorPanel";
-import { MarketChart } from "./components/MarketChart";
-import { MetricPanel } from "./components/MetricPanel";
-import { PositionPanel } from "./components/PositionPanel";
-import { Sidebar } from "./components/Sidebar";
-import { TopBar } from "./components/TopBar";
-import { formatAsset, formatMoney, formatTime } from "./components/ui";
+import { AccountCard } from "./components/dashboard/AccountCard";
+import { ActivityCard } from "./components/dashboard/ActivityCard";
+import { AiAdvisorCard } from "./components/dashboard/AiAdvisorCard";
+import { DashboardHeader } from "./components/dashboard/DashboardHeader";
+import { MarketOverview } from "./components/dashboard/MarketOverview";
+import { MetricOverview } from "./components/dashboard/MetricOverview";
+import { PositionCard } from "./components/dashboard/PositionCard";
+import { StatusBar } from "./components/dashboard/StatusBar";
+import { WorkspaceIntro } from "./components/dashboard/WorkspaceIntro";
+import "./styles.css";
 
-const emptyState: DashboardState = {
-  updatedAt: 0, mode: "testnet", platform: "binance", symbol: "BTCUSDT", interval: "1d",
-  connection: { market: false, userData: false, lastAccountUpdate: 0, error: null },
-  market: { latestPrice: 0, latestCandle: null, recentCandles: [], candleCount: 0, lastCandleTimestamp: 0 },
-  strategy: { buy: null, sell: null, trendFilter: null, entrySignal: null, support: null, resistance: null },
-  account: { balances: [], quoteAsset: "USDT", quoteFree: 0, quoteLocked: 0, baseAsset: "BTC", baseFree: 0, baseLocked: 0, estimatedEquity: 0 },
-  position: null, lastAction: null, activity: [],
-  ai: { enabled: false, decisionMode: "advisory", model: "gpt-4o-mini", latest: null, history: [] },
-};
+const { Content } = Layout;
 
-function useDashboardSocket(onState: (state: DashboardState) => void): "connecting" | "connected" | "offline" {
-  const [status, setStatus] = useState<"connecting" | "connected" | "offline">("connecting");
-  useEffect(() => {
-    let socket: WebSocket | null = null;
-    let retry: number | undefined;
-    const connect = () => {
-      setStatus("connecting");
-      const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${protocol}://${window.location.host}/ws`);
-      socket.onopen = () => setStatus("connected");
-      socket.onmessage = (event) => {
-        const message = JSON.parse(event.data) as { type?: string; payload?: DashboardState };
-        if (message.type === "state" && message.payload) onState(message.payload);
-      };
-      socket.onclose = () => { setStatus("offline"); retry = window.setTimeout(connect, 2500); };
-      socket.onerror = () => socket?.close();
-    };
-    connect();
-    return () => { if (retry) window.clearTimeout(retry); socket?.close(); };
-  }, [onState]);
-  return status;
-}
+const emptyState: DashboardState = { updatedAt: 0, mode: "demo", platform: "okx", symbol: "BTC-USDT", interval: "1d", instruments: [], connection: { market: false, userData: false, lastAccountUpdate: 0, error: null }, market: { latestPrice: 0, latestCandle: null, recentCandles: [], candleCount: 0, lastCandleTimestamp: 0 }, strategy: { buy: null, sell: null, trendFilter: null, entrySignal: null, support: null, resistance: null }, account: { balances: [], quoteAsset: "USDT", quoteFree: 0, quoteLocked: 0, baseAsset: "BTC", baseFree: 0, baseLocked: 0, estimatedEquity: 0 }, position: null, lastAction: null, activity: [], ai: { enabled: false, decisionMode: "advisory", model: "gpt-4o-mini", latest: null, history: [] } };
 
-export default function App(): ReactElement {
-  const [state, setState] = useState<DashboardState>(emptyState);
-  const socketStatus = useDashboardSocket(setState);
-  const baseTotal = state.account.baseFree + state.account.baseLocked;
-  const quoteTotal = state.account.quoteFree + state.account.quoteLocked;
-  const price = state.market.latestPrice;
-  const pnl = state.position ? (price - state.position.entryPrice) * state.position.quantity : 0;
-  const strategyStatus = state.strategy.entrySignal === true ? "允许入场" : state.strategy.trendFilter === false ? "趋势过滤" : "等待信号";
-  const lastAction = state.lastAction;
+function useDashboardSocket(onState: (state: DashboardState) => void): "connecting" | "connected" | "offline" { const [status, setStatus] = useState<"connecting" | "connected" | "offline">("connecting"); useEffect(() => { let socket: WebSocket | null = null; let retry: number | undefined; const connect = () => { setStatus("connecting"); const protocol = window.location.protocol === "https:" ? "wss" : "ws"; socket = new WebSocket(`${protocol}://${window.location.host}/ws`); socket.onopen = () => setStatus("connected"); socket.onmessage = (event) => { const message = JSON.parse(event.data) as { type?: string; payload?: DashboardState }; if (message.type === "state" && message.payload) onState(message.payload); }; socket.onclose = () => { setStatus("offline"); retry = window.setTimeout(connect, 2500); }; socket.onerror = () => socket?.close(); }; connect(); return () => { if (retry) window.clearTimeout(retry); socket?.close(); }; }, [onState]); return status; }
 
-  return <div className="app-shell">
-    <TopBar state={state} socketStatus={socketStatus} />
-    <div className="workspace"><Sidebar state={state} /><main className="main-content">
-      <div className="page-heading"><div><p className="eyebrow">LIVE OPERATIONS</p><h1>交易工作台</h1><p className="page-note">策略、账户和成交状态在同一时间线上同步。</p></div><div className="last-update">最后更新 <strong>{formatTime(state.updatedAt)}</strong></div></div>
-      {state.connection.error && <div className="error-strip"><span>!</span>账户余额读取失败：{state.connection.error}</div>}
-      <div className="metrics-grid"><MetricPanel icon={CircleDollarSign} label="账户权益估算" value={`${formatMoney(state.account.estimatedEquity)} ${state.account.quoteAsset}`} detail={`可用 ${formatMoney(quoteTotal)} ${state.account.quoteAsset}`} tone="accent" /><MetricPanel icon={Wallet} label={`${state.account.quoteAsset} 余额`} value={formatMoney(state.account.quoteFree)} detail={`冻结 ${formatMoney(state.account.quoteLocked)}`} /><MetricPanel icon={Activity} label={`${state.account.baseAsset} 持仓`} value={formatAsset(baseTotal)} detail={state.position ? `持仓盈亏 ${pnl >= 0 ? "+" : ""}${formatMoney(pnl)} ${state.account.quoteAsset}` : "当前没有策略持仓"} tone={state.position ? (pnl >= 0 ? "positive" : "negative") : "neutral"} /><MetricPanel icon={ShieldCheck} label="策略状态" value={strategyStatus} detail={lastAction ? `${lastAction.side === "BUY" ? "买入" : "卖出"} · ${lastAction.reason}` : "等待下一根收盘 K 线"} /></div>
-      <div className="primary-grid"><section className="panel chart-panel"><div className="panel-header"><div><h2>{state.symbol} 行情</h2><p>最新收盘价 · {price ? `${formatMoney(price)} ${state.account.quoteAsset}` : "等待数据"}</p></div><div className="signal-stack"><span className="signal-label">买入 {state.strategy.buy ?? "--"}</span><span className="signal-label sell">卖出 {state.strategy.sell ?? "--"}</span></div></div><MarketChart state={state} levels={[...(state.strategy.support ? [{ price: state.strategy.support, title: "支撑位", color: "#79a7c4" }] : []), ...(state.strategy.resistance ? [{ price: state.strategy.resistance, title: "阻力位", color: "#d6a64b" }] : [])]} /></section><AccountPanel state={state} /></div>
-      <div className="secondary-grid"><PositionPanel state={state} /><ActivityPanel state={state} /></div>
-      <div className="ai-grid"><AiAdvisorPanel state={state} /></div>
-    </main></div>
-  </div>;
-}
+export default function App(): ReactElement { const [state, setState] = useState(emptyState); const [activeNav, setActiveNav] = useState("dashboard"); const [switching, setSwitching] = useState(false); const onState = useCallback((next: DashboardState) => setState(next), []); const socketStatus = useDashboardSocket(onState); const onSymbolChange = useCallback(async (symbol: string) => { if (symbol === state.symbol || switching) return; setSwitching(true); try { const response = await fetch("/api/symbol", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol }) }); const result = await response.json() as DashboardState | { error?: string }; if (!response.ok) throw new Error("error" in result ? result.error : "切换交易对失败"); setState(result as DashboardState); } catch (error) { window.alert(error instanceof Error ? error.message : "切换交易对失败"); } finally { setSwitching(false); } }, [state.symbol, switching]); return <Layout className="app-container"><DashboardHeader state={state} activeNav={activeNav} onNavChange={setActiveNav} onSymbolChange={onSymbolChange} /><Content className="app-content"><WorkspaceIntro state={state} /><StatusBar state={state} socketStatus={socketStatus} />{state.connection.error && <div className="error-card"><AlertTriangle size={16} /><span>账户余额读取失败: {state.connection.error}</span></div>}<MetricOverview state={state} /><main className="trading-terminal"><section className="terminal-market"><MarketOverview state={state} /></section><aside className="terminal-sidebar"><AccountCard state={state} /><PositionCard state={state} /></aside></main><section className="terminal-footer"><ActivityCard state={state} /><AiAdvisorCard state={state} /></section></Content></Layout>; }

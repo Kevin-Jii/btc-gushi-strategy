@@ -1,122 +1,874 @@
+/**
+ * BTC 葛氏策略 Dashboard - Semi Design 主题
+ * 深色主题，流畅动画，现代感 UI
+ */
+
+/* ==================== CSS 变量 ==================== */
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: #e9eff3;
-  background: #0c1116;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  /* 颜色系统 */
+  --bg-primary: #0b1117;
+  --bg-secondary: #111a22;
+  --bg-tertiary: #18232d;
+  --bg-card: #14202a;
+  --bg-hover: #252a3a;
+  
+  --text-primary: #f4f7fa;
+  --text-secondary: #bdc8d2;
+  --text-tertiary: #91a0ad;
+  
+  --accent-gold: #d4a64a;
+  --accent-gold-light: #e8c068;
+  --accent-green: #52c41a;
+  --accent-green-light: #73d13d;
+  --accent-red: #ff4d4f;
+  --accent-red-light: #ff7875;
+  --accent-blue: #1890ff;
+  --accent-blue-light: #40a9ff;
+  
+  --border-color: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  
+  /* 过渡 */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* 字体 */
+  --font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 1180px; background: #0c1116; }
-button, a { font: inherit; }
-.app-shell { min-height: 100vh; background: #0c1116; }
-.topbar { height: 68px; border-bottom: 1px solid #26313a; background: #111820; display: flex; align-items: center; padding: 0 30px; gap: 28px; }
-.brand-lockup, .topbar-center, .topbar-right, .metric-head, .panel-header, .connection-pill, .socket-state, .nav-item, .side-status, .signal-stack, .chart-legend, .asset-name, .activity-row, .error-strip { display: flex; align-items: center; }
-.brand-lockup { gap: 11px; min-width: 240px; }
-.brand-mark { width: 30px; height: 30px; display: grid; place-items: center; background: #d7a64a; color: #17140d; font-weight: 800; border-radius: 6px; }
-.brand-name { font-size: 14px; font-weight: 800; letter-spacing: .02em; }
-.brand-subtitle { color: #82909b; font-size: 11px; margin-top: 2px; }
-.topbar-center { gap: 8px; flex: 1; }
-.mode-badge, .symbol-badge, .interval-badge, .connection-pill { border: 1px solid #2b3944; background: #151e26; color: #aebbc5; font-size: 11px; padding: 6px 9px; }
-.mode-badge { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
-.mode-badge.testnet { color: #e2b963; border-color: #67532e; }
-.mode-badge.live { color: #f08c78; border-color: #7c3f37; }
-.mode-dot, .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
-.symbol-badge { color: #e9eff3; font-weight: 750; }
-.interval-badge { color: #81919d; }
-.topbar-right { gap: 8px; }
-.connection-pill { gap: 6px; padding: 5px 8px; }
-.connection-pill.online { color: #78c8a0; border-color: #2c5947; }
-.connection-pill.offline { color: #ce7568; border-color: #633b38; }
-.socket-state { gap: 6px; color: #75848e; font-size: 11px; margin-left: 7px; }
-.socket-state .online { color: #78c8a0; }
-.socket-state .offline { color: #ce7568; }
-.workspace { display: flex; min-height: calc(100vh - 68px); }
-.sidebar { width: 208px; flex: 0 0 208px; border-right: 1px solid #26313a; background: #0f161d; padding: 26px 14px; display: flex; flex-direction: column; }
-.side-section-title { color: #687781; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; margin: 0 12px 11px; }
-nav { display: grid; gap: 3px; }
-.nav-item { gap: 10px; padding: 10px 12px; color: #8b99a3; text-decoration: none; font-size: 12px; border-radius: 5px; }
-.nav-item.active { color: #e4edf1; background: #1b2932; box-shadow: inset 2px 0 #d7a64a; }
-.nav-item:not(.active):hover { background: #172229; color: #c5d1d8; }
-.sidebar-bottom { margin-top: auto; border-top: 1px solid #26313a; padding-top: 22px; }
-.side-status { gap: 8px; padding: 8px 12px; color: #71808b; font-size: 11px; }
-.side-status b { margin-left: auto; font-weight: 600; color: #8b99a3; }
-.side-status b.ok { color: #78c8a0; }.side-status b.bad { color: #ce7568; }
-.main-content { flex: 1; padding: 30px 34px 44px; max-width: 1700px; }
-.page-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 22px; }
-.eyebrow { color: #d7a64a; font-size: 10px; letter-spacing: .14em; margin: 0 0 7px; font-weight: 800; }
-h1, h2, p { margin: 0; }.page-heading h1 { font-size: 25px; letter-spacing: -.02em; }.page-note { margin-top: 7px; color: #81909a; font-size: 12px; }.last-update { color: #71808a; font-size: 11px; }.last-update strong { color: #c3ced4; font-weight: 600; margin-left: 5px; }
-.error-strip { gap: 8px; color: #ecaa9d; border: 1px solid #653c38; background: #271918; padding: 10px 12px; font-size: 12px; margin-bottom: 16px; }
-.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-.metric-panel, .panel { border: 1px solid #27343d; background: #121b23; }
-.metric-panel { min-height: 120px; padding: 16px 17px; }.metric-panel.accent { border-color: #66522f; background: #171c1d; }.metric-head { gap: 8px; color: #8997a1; font-size: 11px; }.metric-icon { display: grid; place-items: center; color: #b3c1c8; }.metric-panel.accent .metric-icon { color: #e1b457; }.metric-panel > strong { display: block; color: #edf3f5; font-size: 22px; line-height: 1.2; margin: 16px 0 6px; letter-spacing: -.02em; }.metric-panel > small { color: #73828c; font-size: 11px; }.metric-panel.positive strong, .positive-text { color: #72c59a !important; }.metric-panel.negative strong, .negative-text { color: #dc8172 !important; }
-.primary-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(360px, .78fr); gap: 14px; margin-bottom: 14px; }.secondary-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(460px, 1fr); gap: 14px; }
-.panel { padding: 20px; min-width: 0; }.panel-header { justify-content: space-between; gap: 12px; }.panel-header h2 { color: #e6eef2; font-size: 14px; letter-spacing: .01em; }.panel-header p { color: #778691; font-size: 11px; margin-top: 5px; }.signal-stack { gap: 6px; }.signal-label { border: 1px solid #2b614c; color: #83caa7; background: #14251e; padding: 5px 8px; font-size: 10px; }.signal-label.sell { border-color: #623a36; color: #d58a7d; background: #251918; }.chart-shell { position: relative; padding-top: 18px; }.market-chart { width: 100%; height: 310px; display: block; overflow: visible; }.chart-grid { stroke: #26343d; stroke-width: 1; stroke-dasharray: 2 4; }.chart-label { fill: #677681; font-size: 10px; }.chart-tick { stroke: #45535c; stroke-width: 1; }.price-line, .ma20-line, .ma60-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }.price-line { stroke: #e3edf0; stroke-width: 2; }.ma20-line { stroke: #d6a64b; stroke-width: 1.25; }.ma60-line { stroke: #79a7c4; stroke-width: 1.25; }.chart-legend { gap: 15px; border-top: 1px solid #253139; padding-top: 11px; color: #84929c; font-size: 10px; }.chart-legend span { display: inline-flex; align-items: center; gap: 5px; }.legend-dot { width: 7px; height: 2px; display: inline-block; }.legend-dot.price { background: #e3edf0; }.legend-dot.ma20 { background: #d6a64b; }.legend-dot.ma60 { background: #79a7c4; }.chart-window { margin-left: auto; color: #65747e; }.empty-chart { height: 310px; display: grid; place-content: center; justify-items: center; gap: 10px; color: #71808b; font-size: 12px; }
-.account-panel { display: flex; flex-direction: column; }.icon-online { color: #78c8a0; }.icon-offline { color: #ce7568; }.asset-table { margin-top: 26px; }.wallet-table { max-height: 278px; overflow-y: auto; scrollbar-color: #41515b #131d24; scrollbar-width: thin; }.asset-row { display: grid; grid-template-columns: 1.1fr 1fr 1fr; gap: 12px; align-items: center; min-height: 48px; border-bottom: 1px solid #243039; color: #d5dfe4; font-size: 12px; text-align: right; }.asset-row > *:first-child { text-align: left; }.asset-row.header { min-height: 28px; color: #677681; font-size: 10px; border-bottom-color: #33414a; position: sticky; top: 0; background: #121b23; }.asset-name { gap: 8px; font-weight: 700; }.asset-icon { width: 22px; height: 22px; border-radius: 4px; display: grid; place-items: center; font-size: 12px; }.asset-icon.btc { background: #634c24; color: #e4b763; }.asset-icon.usdt { background: #235442; color: #80d0a6; }.asset-icon.other { background: #27333b; color: #9caab2; font-size: 10px; }.account-summary { margin-top: auto; padding-top: 23px; display: flex; justify-content: space-between; align-items: baseline; color: #8896a0; font-size: 11px; }.account-summary strong { color: #e9f1f2; font-size: 21px; }.account-summary small { color: #87959f; font-size: 11px; font-weight: 500; }.account-refresh { margin-top: 8px; color: #66757f; font-size: 10px; text-align: right; }
-.position-state, .activity-count { font-size: 10px; padding: 5px 8px; }.position-state.held { border: 1px solid #2d604b; color: #83caa7; background: #14251e; }.position-state.flat { border: 1px solid #36434c; color: #87959e; }.activity-count { color: #7f8f99; }.position-details { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-top: 28px; }.position-details span { display: block; color: #71808a; font-size: 10px; margin-bottom: 9px; }.position-details strong { font-size: 15px; color: #e5edf0; }.empty-state { min-height: 108px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #778690; font-size: 12px; line-height: 1.7; text-align: center; }.empty-state svg { color: #d4a551; flex: 0 0 auto; }.empty-state.compact { min-height: 120px; }.activity-list { margin-top: 17px; }.activity-row { gap: 10px; min-height: 45px; border-bottom: 1px solid #243039; }.activity-row:last-child { border-bottom: 0; }.activity-icon { width: 25px; height: 25px; flex: 0 0 25px; display: grid; place-items: center; color: #a5b2ba; background: #26323a; }.activity-icon.order.buy { background: #18392d; color: #7cc89e; }.activity-icon.order.sell { background: #3b2422; color: #db897b; }.activity-icon.balance { background: #2d2d26; color: #d4ad5c; }.activity-copy { min-width: 0; flex: 1; }.activity-copy strong, .activity-copy span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }.activity-copy strong { color: #dce6e9; font-size: 11px; font-weight: 650; }.activity-copy span { color: #778690; font-size: 10px; margin-top: 4px; }.activity-row time { color: #687781; font-size: 10px; white-space: nowrap; }
-@media (max-width: 1250px) { .topbar { padding: 0 20px; gap: 15px; }.brand-lockup { min-width: 205px; }.main-content { padding-left: 24px; padding-right: 24px; }.sidebar { width: 190px; flex-basis: 190px; }.metrics-grid { gap: 8px; }.metric-panel { padding-left: 13px; padding-right: 13px; } }
+/* ==================== 全局样式 ==================== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-/* Beautiful UI 风格的 AI 审核原语：低对比边界、紧凑芯片和上下文信息层。 */
-.ai-grid { margin-top: 14px; }
-.ai-panel { padding: 20px; }
-.ai-panel-header { align-items: flex-start; }
-.ai-title-lockup { display: flex; align-items: center; gap: 10px; }
-.ai-title-icon { width: 30px; height: 30px; display: grid; place-items: center; color: #d9b05b; background: #25251f; border: 1px solid #5d4c2d; border-radius: 8px; }
-.bui-status-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 25px; padding: 0 8px; border: 1px solid #35434c; border-radius: 8px; color: #a8b5bd; background: #172128; font-size: 10px; font-weight: 650; white-space: nowrap; }
-.bui-status-chip.positive { color: #8bd4ad; border-color: #2e614d; background: #15281f; }
-.bui-status-chip.negative { color: #e59a8c; border-color: #663d39; background: #291b1a; }
-.bui-status-chip.warning { color: #dfbb70; border-color: #65522f; background: #29241a; }
-.bui-status-chip.info { color: #9fc5de; border-color: #385668; background: #18252d; }
-.bui-ai-empty { min-height: 118px; display: flex; align-items: center; justify-content: center; gap: 11px; color: #d2a74f; text-align: left; }
-.bui-ai-empty div { display: grid; gap: 5px; }
-.bui-ai-empty strong { color: #cfdbe0; font-size: 12px; font-weight: 650; }
-.bui-ai-empty span { color: #778791; font-size: 11px; }
-.bui-recommendation { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 23px; padding: 14px 15px; border: 1px solid #2c3941; border-radius: 10px; background: #151e25; }
-.bui-recommendation-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.bui-recommendation-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; }
-.bui-recommendation-icon.positive { color: #8bd4ad; background: #18352a; }
-.bui-recommendation-icon.negative { color: #e59a8c; background: #382220; }
-.bui-recommendation-icon.neutral { color: #c7b276; background: #302a1e; }
-.bui-recommendation-main div { display: grid; gap: 4px; }
-.bui-kicker { color: #73838d; font-size: 10px; }
-.bui-recommendation-main strong { color: #e6eef1; font-size: 15px; font-weight: 680; }
-.bui-confidence { min-width: 160px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; color: #7f8f99; font-size: 10px; }
-.bui-confidence strong { color: #e1ebed; font-size: 14px; font-weight: 680; }
-.bui-confidence-track { grid-column: 1 / -1; height: 4px; background: #2b3740; border-radius: 2px; overflow: hidden; }
-.bui-confidence-track span { display: block; height: 100%; background: #d4a64d; border-radius: inherit; }
-.bui-chip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
-.bui-generated { display: inline-flex; align-items: center; gap: 5px; color: #71818b; font-size: 10px; margin-left: auto; }
-.bui-summary { margin-top: 15px; color: #c7d3d8; font-size: 12px; line-height: 1.65; }
-.bui-context-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #27343c; }
-.bui-context-row { min-width: 0; display: grid; gap: 6px; }
-.bui-context-row > span { color: #71818b; font-size: 10px; }
-.bui-context-row > strong { min-width: 0; color: #d3dfe3; font-size: 11px; font-weight: 620; line-height: 1.4; overflow-wrap: anywhere; }
-.bui-context-row > strong.positive, .bui-context-row > strong.info { color: #8fc5df; }
-.bui-context-row > strong.warning { color: #d9b66a; }
-.bui-context-row > strong.negative { color: #df9184; }
-.bui-insight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 18px; }
-.bui-insight-list { min-width: 0; }
-.bui-insight-list h3 { margin: 0 0 9px; color: #8c9aa2; font-size: 10px; font-weight: 700; }
-.bui-insight-list ul { list-style: none; margin: 0; padding: 0; }
-.bui-insight-list li, .bui-insight-list p { color: #b6c3c8; font-size: 11px; line-height: 1.55; padding: 7px 0; border-top: 1px solid #27343c; }
-.bui-insight-list li:first-child { border-top: 0; }
-.bui-insight-list.positive h3 { color: #83c7a5; }.bui-insight-list.negative h3 { color: #d88d81; }
-.bui-insight-list.positive li::before, .bui-insight-list.negative li::before { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 7px 1px 0; border-radius: 50%; background: #76c29a; }
-.bui-insight-list.negative li::before { background: #d88073; }
-.bui-history { margin-top: 18px; padding-top: 14px; border-top: 1px solid #27343c; }
-.bui-history-heading { display: flex; justify-content: space-between; color: #7b8a94; font-size: 10px; margin-bottom: 7px; }
-.bui-history-table { display: grid; gap: 1px; }
-.bui-history-row { display: grid; grid-template-columns: 1fr 60px 90px 48px; align-items: center; gap: 8px; min-height: 30px; border-top: 1px solid #222f37; color: #92a0a8; font-size: 10px; }
-.bui-history-row time { color: #687983; }
-.bui-history-recommendation { font-weight: 750; }.bui-history-recommendation.positive { color: #82c9a3; }.bui-history-recommendation.negative { color: #df8c80; }.bui-history-recommendation.neutral { color: #c4ae6e; }
-.bui-history-rule.positive { color: #82c9a3; }.bui-history-rule.negative { color: #df8c80; }.bui-history-rule.warning { color: #d7b46b; }
-.bui-history-confidence { color: #c7d3d7; text-align: right; }
-@media (max-width: 1000px) { .bui-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }.bui-generated { margin-left: 0; }.bui-recommendation { align-items: flex-start; flex-direction: column; }.bui-confidence { width: 100%; } }
-.activity-icon.ai { background: #25251f; color: #d8b05a; }
+body {
+  font-family: var(--font-family);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-/* Lightweight Charts 使用 Canvas；容器尺寸固定，避免图表初始化时布局跳动。 */
-.market-chart-host { position: relative; width: 100%; height: 310px; overflow: hidden; }
-.market-chart-host .market-chart { width: 100%; height: 310px; display: block; }
-.market-chart-host .empty-chart { position: absolute; inset: 0; background: #121b23; }
-.legend-dot.candle { width: 7px; height: 7px; border-radius: 1px; background: #e3edf0; }
-.legend-dot.level { background: #d6a64b; }
+/* Semi Design 覆盖样式 */
+.semi-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-lg) !important;
+  transition: all var(--transition-normal) !important;
+}
+
+.semi-card:hover {
+  border-color: var(--border-hover) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md) !important;
+}
+
+.semi-tag {
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500 !important;
+}
+
+.semi-progress-track {
+  background: var(--bg-tertiary) !important;
+  border-radius: 4px !important;
+}
+
+/* ==================== 页面层级与视觉增强 ==================== */
+.workspace-intro { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 20px 4px 26px; }
+.workspace-intro .semi-typography-heading-1 { margin: 8px 0 4px !important; font-size: clamp(28px, 3vw, 42px) !important; letter-spacing: -0.04em; }
+.workspace-intro .semi-typography-paragraph { color: var(--text-secondary); margin: 0 !important; }
+.eyebrow { color: var(--accent-gold); font-size: 10px; font-weight: 800; letter-spacing: .16em; }
+.eyebrow-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); margin-right: 7px; box-shadow: 0 0 0 4px rgba(82,196,26,.12); }
+.intro-context { min-width: 245px; padding: 15px 18px; border: 1px solid rgba(212,166,74,.2); border-radius: 12px; background: linear-gradient(135deg, rgba(212,166,74,.1), rgba(255,255,255,.025)); display: flex; flex-direction: column; gap: 5px; }
+.context-label, .context-meta, .section-note { color: var(--text-tertiary); font-size: 12px; }
+.intro-context strong { color: var(--text-primary); font-size: 14px; }
+.section-heading { display: flex; align-items: flex-end; justify-content: space-between; margin: 5px 2px 12px; }
+.section-heading .semi-typography-heading-4 { margin: 5px 0 0 !important; }
+.chart-heading { margin-top: 4px; }
+.header-connection { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); font-size: 12px; }
+.header-connection.connected { color: var(--accent-green-light); }
+.header-connection.disconnected { color: var(--text-tertiary); }
+.header-connection .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.error-card { display: flex; gap: 10px; align-items: center; padding: 12px 16px; margin-bottom: 18px; border-radius: 10px; color: var(--accent-red-light); background: rgba(255,77,79,.1); border: 1px solid rgba(255,77,79,.25); }
+.metric-card { position: relative; overflow: hidden; }
+.metric-card::after { content: ""; position: absolute; width: 90px; height: 90px; right: -35px; bottom: -45px; border-radius: 50%; background: rgba(255,255,255,.035); }
+.metric-card.equity { border-top: 2px solid var(--accent-gold) !important; }
+.metric-card.strategy { border-top: 2px solid var(--accent-blue) !important; }
+.metric-card.strategy .semi-typography-heading-3 { display: none; }
+.metric-card.strategy .semi-tag { margin: 7px 0; }
+
+/* ==================== 布局容器 ==================== */
+.app-container {
+  min-height: 100vh;
+  background: var(--bg-primary) !important;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  padding: 0 var(--space-lg) !important;
+  background: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-content {
+  padding: var(--space-lg) !important;
+  background: var(--bg-primary) !important;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+/* ==================== 头部品牌 ==================== */
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.brand-logo {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--accent-gold) 0%, #c49a3a 100%);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: #1a1409;
+  box-shadow: 0 2px 8px rgba(212, 166, 74, 0.3);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-title {
+  color: var(--text-primary) !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+.brand-subtitle {
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+/* ==================== 导航 ==================== */
+.header-nav {
+  background: transparent !important;
+  border: none !important;
+}
+
+.header-nav .semi-nav-item {
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-md) !important;
+  margin: 0 var(--space-xs) !important;
+  padding: var(--space-sm) var(--space-md) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+.header-nav .semi-nav-item:hover {
+  color: var(--text-primary) !important;
+  background: var(--bg-hover) !important;
+}
+
+.header-nav .semi-nav-item.semi-nav-item-selected {
+  color: var(--accent-gold) !important;
+  background: rgba(212, 166, 74, 0.1) !important;
+}
+
+/* ==================== 头部右侧 ==================== */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.mode-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* ==================== 状态栏 ==================== */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+  border: 1px solid var(--border-color);
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--text-tertiary);
+}
+
+.update-time {
+  margin-left: auto;
+}
+
+/* ==================== 错误卡片 ==================== */
+.error-card {
+  background: rgba(255, 77, 79, 0.1) !important;
+  border: 1px solid rgba(255, 77, 79, 0.3) !important;
+  margin-bottom: var(--space-lg);
+}
+
+.error-content {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--accent-red);
+}
+
+/* ==================== 指标卡片网格 ==================== */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.metric-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: var(--space-lg) !important;
+  animation: fadeInUp 0.5s ease-out;
+  animation-fill-mode: both;
+}
+
+.metric-card:nth-child(1) { animation-delay: 0.1s; }
+.metric-card:nth-child(2) { animation-delay: 0.15s; }
+.metric-card:nth-child(3) { animation-delay: 0.2s; }
+.metric-card:nth-child(4) { animation-delay: 0.25s; }
+
+.metric-icon-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.metric-icon-wrapper.accent {
+  background: rgba(212, 166, 74, 0.15);
+  color: var(--accent-gold);
+}
+
+.metric-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.metric-content .semi-typography {
+  margin: 0 !important;
+}
+
+/* ==================== 主网格 ==================== */
+.primary-grid {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.chart-card {
+  padding: var(--space-lg) !important;
+  animation: fadeInUp 0.5s ease-out 0.3s both;
+}
+
+.side-panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+/* ==================== 卡片头部 ==================== */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-md);
+}
+
+.card-title {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.card-title .semi-typography-heading {
+  margin: 0 !important;
+}
+
+.price-display {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+}
+
+.current-price {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.quote-asset {
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+/* ==================== 信号指示器 ==================== */
+.signal-indicators {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.signal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-xs);
+}
+
+.signal-indicators .semi-tag {
+  font-weight: 600 !important;
+}
+
+/* ==================== 账户卡片 ==================== */
+.account-card,
+.position-card {
+  padding: var(--space-lg) !important;
+  animation: fadeInUp 0.5s ease-out 0.35s both;
+}
+
+.account-header,
+.position-header,
+.activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.account-header .semi-typography-heading,
+.position-header .semi-typography-heading,
+.activity-header .semi-typography-heading {
+  margin: 0 !important;
+}
+
+.account-summary {
+  background: linear-gradient(135deg, rgba(212, 166, 74, 0.1) 0%, rgba(212, 166, 74, 0.05) 100%);
+  padding: var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(212, 166, 74, 0.2);
+}
+
+.asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.asset-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.asset-item:hover {
+  background: var(--bg-hover);
+}
+
+.asset-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.asset-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.asset-icon.btc {
+  background: rgba(212, 166, 74, 0.2);
+  color: var(--accent-gold);
+}
+
+.asset-icon.usdt {
+  background: rgba(82, 196, 26, 0.2);
+  color: var(--accent-green);
+}
+
+.asset-value {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ==================== 持仓卡片 ==================== */
+.position-empty,
+.ai-empty,
+.activity-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  text-align: center;
+  color: var(--text-tertiary);
+  gap: var(--space-sm);
+}
+
+.position-main {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.position-asset,
+.position-entry,
+.position-pnl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.pnl-value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.pnl-value.positive {
+  color: var(--accent-green);
+}
+
+.pnl-value.negative {
+  color: var(--accent-red);
+}
+
+.position-details {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* ==================== 活动面板 ==================== */
+.activity-card {
+  padding: var(--space-lg) !important;
+  animation: fadeInUp 0.5s ease-out 0.4s both;
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.activity-item:hover {
+  background: var(--bg-hover);
+}
+
+.activity-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activity-icon.order {
+  background: rgba(24, 144, 255, 0.2);
+  color: var(--accent-blue);
+}
+
+.activity-icon.balance {
+  background: rgba(212, 166, 74, 0.2);
+  color: var(--accent-gold);
+}
+
+.activity-icon.ai {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.activity-icon.system {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.activity-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ==================== AI 审核卡片 ==================== */
+.ai-card {
+  padding: var(--space-lg) !important;
+  animation: fadeInUp 0.5s ease-out 0.45s both;
+}
+
+.ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-lg);
+}
+
+.ai-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--accent-gold);
+}
+
+.ai-title .semi-typography-heading {
+  margin: 0 !important;
+}
+
+.ai-recommendation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-md);
+}
+
+.recommendation-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recommendation-icon[data-type="buy"] {
+  background: rgba(82, 196, 26, 0.2);
+  color: var(--accent-green);
+}
+
+.recommendation-icon[data-type="sell"] {
+  background: rgba(255, 77, 79, 0.2);
+  color: var(--accent-red);
+}
+
+.recommendation-icon[data-type="hold"] {
+  background: rgba(250, 173, 20, 0.2);
+  color: #faad14;
+}
+
+.recommendation-info {
+  flex: 1;
+}
+
+.confidence {
+  text-align: right;
+  min-width: 120px;
+}
+
+.confidence-value {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.confidence-value span {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.ai-tags {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.ai-summary {
+  color: var(--text-secondary) !important;
+  line-height: 1.6 !important;
+}
+
+.ai-insights {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.insight-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.insight-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.insight-list li {
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.insight-list.positive li {
+  background: rgba(82, 196, 26, 0.1);
+  border-left: 2px solid var(--accent-green);
+}
+
+.insight-list.negative li {
+  background: rgba(255, 77, 79, 0.1);
+  border-left: 2px solid var(--accent-red);
+}
+
+/* ==================== 次级网格 ==================== */
+.secondary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+}
+
+/* ==================== 动画 ==================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ==================== 滚动条 ==================== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-hover);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 1400px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .primary-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .side-panels {
+    flex-direction: row;
+  }
+  
+  .side-panels > * {
+    flex: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .secondary-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .side-panels {
+    flex-direction: column;
+  }
+  
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .header-nav {
+    display: none !important;
+  }
+}
+
+/* ==================== 可读性基线 ==================== */
+/* 覆盖组件库的默认 tertiary 颜色，保证暗色背景上的文字达到可读对比度。 */
+.semi-typography, .semi-typography-text, .semi-typography-paragraph { color: var(--text-primary); }
+.semi-typography-secondary, .semi-typography-tertiary, .semi-typography-light, .semi-typography-disabled { color: var(--text-secondary) !important; }
+.semi-typography[aria-label], .semi-typography-tertiary { font-size: 13px; }
+.semi-typography-heading { color: var(--text-primary) !important; }
+.semi-typography-heading-1 { font-weight: 750 !important; }
+.semi-typography-heading-3 { font-size: 24px !important; font-weight: 700 !important; letter-spacing: -.02em; }
+.semi-typography-heading-4 { font-size: 19px !important; font-weight: 700 !important; }
+.semi-typography-heading-5 { font-size: 16px !important; font-weight: 700 !important; }
+.semi-card { color: var(--text-primary) !important; }
+.card-title, .card-title .semi-typography, .account-header .semi-typography, .position-header .semi-typography, .activity-header .semi-typography { color: var(--text-primary) !important; }
+.metric-content .semi-typography-tertiary, .detail-item .semi-typography-tertiary, .asset-info .semi-typography-tertiary, .asset-value .semi-typography-tertiary, .status-item, .update-time, .section-note { color: var(--text-secondary) !important; }
+.current-price { color: #ffffff; font-size: 28px; }
+.price-display, .metric-content, .position-main, .position-details, .asset-item, .activity-item { font-size: 14px; }
+.asset-info .semi-typography, .asset-value .semi-typography, .detail-item .semi-typography { color: var(--text-primary) !important; }
+.asset-info .semi-typography-tertiary, .asset-value .semi-typography-tertiary, .detail-item .semi-typography-tertiary { color: var(--text-secondary) !important; font-size: 12px; }
+.semi-tag { color: #eaf2f7 !important; }
+.header-nav .semi-nav-item { font-size: 14px; }
+.chart-legend { color: var(--text-secondary) !important; font-size: 12px; }
+.chart-window { color: var(--text-secondary) !important; }
+.activity-content .semi-typography-tertiary, .ai-summary, .insight-list li { color: var(--text-secondary) !important; }
+.ai-title .semi-typography, .ai-recommendation .semi-typography { color: var(--text-primary) !important; }
+.intro-context .context-meta, .context-label { color: var(--text-secondary); }
+
+/* ==================== 交易终端布局 ==================== */
+/* 交易界面采用分隔线和信息栏，而不是卡片墙。组件仍保持独立，布局只在这里控制。 */
+.app-content { max-width: none; padding: 0 24px 28px !important; }
+.workspace-intro { max-width: 1600px; margin: 0 auto; padding: 22px 0 18px; }
+.workspace-intro .semi-typography-heading-1 { font-size: 30px !important; }
+.intro-context { min-width: 230px; padding: 10px 14px; border-radius: 4px; background: transparent; border: 1px solid var(--border-color); }
+.status-bar { max-width: 1600px; margin: 0 auto 14px; border-radius: 3px; background: #111b23; border: 1px solid #2a3945; }
+.section-heading { margin: 0 0 10px; }
+.section-heading .semi-typography-heading-4 { font-size: 16px !important; }
+.section-heading .eyebrow { font-size: 10px; }
+.metrics-grid { max-width: 1600px; margin: 0 auto 14px; display: flex; gap: 0; border: 1px solid #2a3945; background: #111b23; }
+.metric-card { flex: 1; min-height: 90px; padding: 14px 18px !important; border: 0 !important; border-right: 1px solid #2a3945 !important; border-radius: 0 !important; box-shadow: none !important; transform: none !important; background: transparent !important; }
+.metric-card:last-child { border-right: 0 !important; }
+.metric-card::after { display: none; }
+.metric-icon-wrapper { width: 30px; height: 30px; border-radius: 3px; }
+.metric-content .semi-typography-heading-3 { font-size: 19px !important; margin: 3px 0 !important; }
+.trading-terminal { max-width: 1600px; min-height: 520px; margin: 0 auto 14px; display: grid; grid-template-columns: minmax(0, 1fr) 310px; border: 1px solid #2a3945; background: #14202a; }
+.terminal-market { min-width: 0; padding: 14px 16px 10px; }
+.terminal-market .section-heading { display: none; }
+.chart-card, .account-card, .position-card, .activity-card, .ai-card { border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; transform: none !important; }
+.chart-card { padding: 0 !important; }
+.chart-card:hover, .account-card:hover, .position-card:hover, .activity-card:hover, .ai-card:hover { transform: none; box-shadow: none !important; }
+.market-chart-host { min-height: 420px; }
+.terminal-sidebar { border-left: 1px solid #2a3945; display: flex; flex-direction: column; }
+.terminal-sidebar .account-card, .terminal-sidebar .position-card { padding: 16px !important; border-bottom: 1px solid #2a3945 !important; }
+.terminal-sidebar .position-card { flex: 1; border-bottom: 0 !important; }
+.account-summary { border-radius: 3px; padding: 12px; background: #182832; border: 1px solid #30424e; }
+.asset-item { border-radius: 2px; padding: 10px 0; background: transparent; border-bottom: 1px solid #263640; }
+.asset-item:hover { background: transparent; }
+.position-empty { padding: 40px 8px; }
+.terminal-footer { max-width: 1600px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1.4fr; border: 1px solid #2a3945; background: #111b23; }
+.terminal-footer .activity-card, .terminal-footer .ai-card { padding: 16px !important; }
+.terminal-footer .ai-card { border-left: 1px solid #2a3945 !important; }
+.activity-list { max-height: 210px; }
+.ai-recommendation { padding: 12px; border-radius: 3px; }
+@media (max-width: 1050px) { .trading-terminal { grid-template-columns: 1fr; } .terminal-sidebar { border-left: 0; border-top: 1px solid #2a3945; display: grid; grid-template-columns: 1fr 1fr; } .terminal-sidebar .position-card { border-left: 1px solid #2a3945 !important; } }
+@media (max-width: 720px) { .app-content { padding: 0 10px 18px !important; } .workspace-intro { align-items: flex-start; flex-direction: column; } .intro-context { width: 100%; } .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; } .metric-card:nth-child(2) { border-right: 0 !important; } .metric-card:nth-child(-n+2) { border-bottom: 1px solid #2a3945 !important; } .terminal-sidebar, .terminal-footer { display: block; } .terminal-sidebar .position-card, .terminal-footer .ai-card { border-left: 0 !important; border-top: 1px solid #2a3945 !important; } .header-right { display: none; } }
+
+/* ==================== 工具类 ==================== */
+.positive { color: var(--accent-green) !important; }
+.negative { color: var(--accent-red) !important; }
+.warning { color: #faad14 !important; }
+
+.text-small { font-size: 12px; }
+.text-medium { font-size: 14px; }
+.text-large { font-size: 16px; }
+
+.mt-sm { margin-top: var(--space-sm); }
+.mt-md { margin-top: var(--space-md); }
+.mt-lg { margin-top: var(--space-lg); }
+
+.mb-sm { margin-bottom: var(--space-sm); }
+.mb-md { margin-bottom: var(--space-md); }
+.mb-lg { margin-bottom: var(--space-lg); }

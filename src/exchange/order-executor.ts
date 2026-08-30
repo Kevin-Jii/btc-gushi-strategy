@@ -1,8 +1,20 @@
-import type { OrderFill, SymbolRules, TradingClient } from "./binance-types.js";
-import { floorToStep } from "./binance-client.js";
+/**
+ * 订单执行器
+ * 负责把策略的目标金额/数量转换为交易所可接受的现货订单
+ */
+
+import type { OrderFill, SymbolRules, TradingClient } from "./trading-types.js";
+
+/**
+ * 将数值向下取整到指定步长的倍数
+ */
+function floorToStep(value: number, step: number): number {
+  if (step <= 0) return value;
+  return Math.floor(value / step) * step;
+}
 
 /** 负责把策略的目标金额/数量转换为交易所可接受的现货订单。 */
-export class BinanceOrderExecutor {
+export class OrderExecutor {
   private rules: SymbolRules | null = null;
 
   public constructor(
@@ -13,7 +25,6 @@ export class BinanceOrderExecutor {
   public async loadRules(): Promise<SymbolRules> {
     this.rules = await this.client.getSymbolRules(this.symbol);
     if (this.rules.minNotional <= 0) {
-      // 某些新交易对可能只返回 NOTIONAL；没有最小值时仍允许交易所校验。
       this.rules.minNotional = 0;
     }
     return this.rules;

@@ -64,11 +64,11 @@ export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElem
     const chart = createChart(container, {
       width: container.clientWidth || 640,
       height: 310,
-      layout: { background: { type: ColorType.Solid, color: "#121b23" }, textColor: "#71818b", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: 11 },
-      grid: { vertLines: { color: "#202c34", style: LineStyle.Dotted }, horzLines: { color: "#26343d", style: LineStyle.Dotted } },
+      layout: { background: { type: ColorType.Solid, color: "#14202a" }, textColor: "#bdc8d2", fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", fontSize: 12 },
+      grid: { vertLines: { color: "#2a3945", style: LineStyle.Dotted }, horzLines: { color: "#2a3945", style: LineStyle.Dotted } },
       crosshair: { vertLine: { color: "#687983", width: 1, style: LineStyle.Dashed }, horzLine: { color: "#687983", width: 1, style: LineStyle.Dashed } },
-      rightPriceScale: { borderColor: "#33414a", scaleMargins: { top: 0.08, bottom: 0.08 } },
-      timeScale: { borderColor: "#33414a", timeVisible: true, secondsVisible: false, rightOffset: 3, barSpacing: 8 },
+      rightPriceScale: { borderColor: "#52636f", scaleMargins: { top: 0.08, bottom: 0.08 }, textColor: "#d6e0e7" },
+      timeScale: { borderColor: "#52636f", timeVisible: true, secondsVisible: false, rightOffset: 3, barSpacing: 8, tickMarkFormatter: (time) => new Date(Number(time) * 1000).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" }) },
     });
     const candleSeries = chart.addSeries(CandlestickSeries, { upColor: "#79c79d", downColor: "#d98073", borderUpColor: "#79c79d", borderDownColor: "#d98073", wickUpColor: "#79c79d", wickDownColor: "#d98073", priceLineVisible: false, lastValueVisible: true });
     const ma20Series = chart.addSeries(LineSeries, { color: "#d6a64b", lineWidth: 2, title: "MA20", priceLineVisible: false, lastValueVisible: false });
