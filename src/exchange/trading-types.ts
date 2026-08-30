@@ -81,6 +81,9 @@ export interface TradingClient {
   /** 获取订单详情 */
   getOrder(symbol: string, orderId: string): Promise<OrderFill>;
 
+  /** 获取交易对最新成交价，用于 Dashboard 实时行情展示。 */
+  getLatestPrice(symbol: string): Promise<number>;
+
   /** 加载历史 K 线 */
   loadCandles(symbol: string, interval: string, limit?: number): Promise<import("../data/types.js").Candle[]>;
 

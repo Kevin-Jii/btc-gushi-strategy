@@ -52,6 +52,7 @@ class DashboardRuntime {
   private balances: AccountBalance[] = [];
   private lastAccountUpdate = 0;
   private accountError: string | null = null;
+  private latestPrice = 0;
   private activityId = 0;
   private previousBalance = new Map<string, number>();
   private previousActionTimestamp = 0;
@@ -98,10 +99,11 @@ class DashboardRuntime {
     const rawLimit = Number(process.env.BINANCE_HISTORY_LIMIT ?? process.env.OKX_HISTORY_LIMIT ?? 300);
     const historyLimit = Number.isInteger(rawLimit) && rawLimit >= 130 && rawLimit <= 1000 ? rawLimit : 300;
     await this.trader.start(historyLimit);
+    this.latestPrice = this.trader.getStatus().latestCandle?.close ?? 0;
     try { this.instruments = await this.runtime.client.getSpotInstruments(this.runtime.quoteAsset); } catch (error) { logger.warn(`加载 OKX 交易对失败：${error instanceof Error ? error.message : String(error)}`); }
     await this.refreshAccount();
     this.addActivity({ type: "system", title: "交易服务已启动", detail: `${this.runtime.platform.toUpperCase()} ${this.runtime.mode} · ${this.trader.symbol} · ${this.runtime.interval}` });
-    setInterval(() => { void this.refreshAccount(); void this.persistMonitorSnapshot(); }, 3000);
+    setInterval(() => { void this.refreshAccount(); void this.refreshLatestPrice(); void this.persistMonitorSnapshot(); }, 3000);
   }
 
   public state(): DashboardState {
@@ -111,7 +113,7 @@ class DashboardRuntime {
     const quote = rules.find((balance) => balance.asset === this.trader.quoteAsset);
     const baseAsset = this.trader.symbol.split("-")[0] ?? "";
     const base = rules.find((balance) => balance.asset === baseAsset);
-    const latestPrice = status.latestCandle?.close ?? 0;
+    const latestPrice = this.latestPrice || status.latestCandle?.close || 0;
     const estimatedEquity = (quote?.free ?? 0) + (quote?.locked ?? 0) + ((base?.free ?? 0) + (base?.locked ?? 0)) * latestPrice;
     return {
       updatedAt: Date.now(),
@@ -251,6 +253,15 @@ class DashboardRuntime {
       });
     }
     this.broadcast();
+  }
+
+  private async refreshLatestPrice(): Promise<void> {
+    try {
+      this.latestPrice = await this.runtime.client.getLatestPrice(this.trader.symbol);
+      this.broadcast();
+    } catch (error) {
+      logger.warn(`实时价格刷新失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async refreshAccount(): Promise<void> {

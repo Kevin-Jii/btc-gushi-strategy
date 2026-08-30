@@ -95,12 +95,18 @@ export class OkxClient implements TradingClient {
     });
   }
 
+  public async getLatestPrice(symbol: string): Promise<number> {
+    const ticker = await this.publicRequest("/api/v5/market/ticker", { instId: symbol });
+    const price = asNumber(this.firstRow(ticker).last);
+    if (price <= 0) throw new Error(`OKX returned no latest price for ${symbol}`);
+    return price;
+  }
+
   public async marketBuy(symbol: string, quoteOrderQty: number): Promise<OrderFill> {
     if (quoteOrderQty <= 0) throw new Error("Buy amount must be positive");
     if (this.config.instrumentType === "SPOT") return this.placeMarketOrder(symbol, "buy", quoteOrderQty, "quote_ccy");
     const rules = await this.getSymbolRules(symbol);
-    const ticker = await this.publicRequest("/api/v5/market/ticker", { instId: symbol });
-    const price = asNumber(this.firstRow(ticker).last);
+    const price = await this.getLatestPrice(symbol);
     const contracts = Math.floor((quoteOrderQty / Math.max(price, 1)) / Math.max(rules.contractValue ?? 1, 1e-12));
     if (contracts < rules.minQuantity) throw new Error(`合约张数不足最小下单量：${contracts} < ${rules.minQuantity}`);
     const fill = await this.placeMarketOrder(symbol, "buy", contracts * rules.quantityStep, "quote_ccy");
