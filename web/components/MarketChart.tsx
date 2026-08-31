@@ -24,6 +24,7 @@ interface MarketChartProps {
   state: DashboardState;
   /** 后续可直接传入支撑位、阻力位或止损价，不需要改动图表实现。 */
   levels?: ChartPriceLevel[];
+  heightClassName?: string;
 }
 
 function movingAverage(values: number[], period: number): (number | null)[] {
@@ -48,7 +49,7 @@ function uniqueCandles(state: DashboardState): DashboardState["market"]["recentC
 }
 
 /** TradingView Lightweight Charts 图表；使用 Canvas 渲染，避免 SVG 图表难以扩展的问题。 */
-export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElement {
+export function MarketChart({ state, levels = [], heightClassName = "" }: MarketChartProps): ReactElement {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -112,7 +113,7 @@ export function MarketChart({ state, levels = [] }: MarketChartProps): ReactElem
 
   const hasData = candles.length > 0;
   return <div className="chart-shell">
-    <div className="market-chart-host" aria-label={`${state.symbol} K 线与均线图`}>
+    <div className={`market-chart-host ${heightClassName}`} aria-label={`${state.symbol} K 线与均线图`}>
       <div ref={containerRef} className="market-chart" />
       {!hasData && <div className="empty-chart"><BarChart3 size={22} /><span>等待行情 K 线数据</span></div>}
     </div>
