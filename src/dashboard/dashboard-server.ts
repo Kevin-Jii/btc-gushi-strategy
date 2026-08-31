@@ -411,84 +411,62 @@ class DashboardRuntime {
   }
 }
 
+type DashboardRouteHandler = (request: http.IncomingMessage, response: http.ServerResponse, requestUrl: URL) => Promise<void>;
+interface DashboardRoute {
+  method: "GET" | "POST";
+  handler: DashboardRouteHandler;
+  errorStatus?: number;
+}
+
+function readBody(request: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => { body += chunk; });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function main(): Promise<void> {
   const runtime = new DashboardRuntime();
   await runtime.start();
+  const routes: Record<string, DashboardRoute> = {
+    "/api/state": { method: "GET", handler: async (_request, response) => { json(response, 200, runtime.state()); } },
+    "/api/instruments": { method: "GET", errorStatus: 500, handler: async (_request, response) => { json(response, 200, await runtime.getInstruments()); } },
+    "/api/orders": { method: "GET", errorStatus: 500, handler: async (_request, response, requestUrl) => {
+      const query = { limit: Number(requestUrl.searchParams.get("limit") ?? "100"), ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}), ...(requestUrl.searchParams.get("side") === "BUY" || requestUrl.searchParams.get("side") === "SELL" ? { side: requestUrl.searchParams.get("side") as "BUY" | "SELL" } : {}) };
+      json(response, 200, await runtime.getOrders(query));
+    } },
+    "/api/ai-reviews": { method: "GET", errorStatus: 500, handler: async (_request, response, requestUrl) => {
+      const query = { limit: Number(requestUrl.searchParams.get("limit") ?? "100"), ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}) };
+      json(response, 200, await runtime.getAiReviews(query));
+    } },
+    "/api/trade-outcome-reviews": { method: "GET", errorStatus: 500, handler: async (_request, response, requestUrl) => {
+      json(response, 200, await runtime.getTradeOutcomeReviews({ limit: Number(requestUrl.searchParams.get("limit") ?? "100"), ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}) }));
+    } },
+    "/api/performance": { method: "GET", errorStatus: 500, handler: async (_request, response, requestUrl) => { json(response, 200, await runtime.getPerformance(requestUrl.searchParams.get("strategyId") ?? undefined)); } },
+    "/api/interval": { method: "POST", handler: async (request, response) => { await runtime.switchInterval(await readBody(request)); json(response, 200, runtime.state()); } },
+    "/api/ai-chat": { method: "POST", handler: async (request, response) => { json(response, 200, await runtime.chatWithAi(await readBody(request))); } },
+    "/api/ai-review": { method: "POST", handler: async (_request, response) => { await runtime.reviewLatest(); json(response, 200, runtime.state()); } },
+    "/api/trade-review": { method: "POST", handler: async (request, response) => { json(response, 200, await runtime.reviewManualTrade(await readBody(request))); } },
+    "/api/trade": { method: "POST", handler: async (request, response) => { await runtime.manualTrade(await readBody(request)); json(response, 200, runtime.state()); } },
+    "/api/symbol": { method: "POST", handler: async (request, response) => { await runtime.switchSymbol(await readBody(request)); json(response, 200, runtime.state()); } },
+    "/api/health": { method: "GET", handler: async (_request, response) => { json(response, 200, { ok: true, updatedAt: Date.now() }); } },
+  };
   const server = http.createServer((request, response) => {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "127.0.0.1"}`);
-    const url = requestUrl.pathname;
-    const queryLimit = Number(requestUrl.searchParams.get("limit") ?? "100");
-    if (url === "/api/state") {
-      json(response, 200, runtime.state());
+    const route = routes[requestUrl.pathname];
+    if (route) {
+      if (request.method !== route.method) { json(response, 405, { error: `${route.method} required` }); return; }
+      void route.handler(request, response, requestUrl).catch((error) => json(response, route.errorStatus ?? 400, { error: errorMessage(error) }));
       return;
     }
-    if (url === "/api/instruments") {
-      void runtime.getInstruments().then((instruments) => json(response, 200, instruments)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
-      return;
-    }
-    if (url === "/api/orders") {
-      const orderQuery = { limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}), ...(requestUrl.searchParams.get("side") === "BUY" || requestUrl.searchParams.get("side") === "SELL" ? { side: requestUrl.searchParams.get("side") as "BUY" | "SELL" } : {}) };
-      void runtime.getOrders(orderQuery).then((orders) => json(response, 200, orders)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
-      return;
-    }
-    if (url === "/api/ai-reviews") {
-      const reviewQuery = { limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}) };
-      void runtime.getAiReviews(reviewQuery).then((reviews) => json(response, 200, reviews)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
-      return;
-    }
-    if (url === "/api/trade-outcome-reviews") {
-      void runtime.getTradeOutcomeReviews({ limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}) }).then((reviews) => json(response, 200, reviews)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
-      return;
-    }
-    if (url === "/api/performance") {
-      void runtime.getPerformance(requestUrl.searchParams.get("strategyId") ?? undefined).then((rows) => json(response, 200, rows)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
-      return;
-    }
-    if (url === "/api/interval") {
-      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
-      let body = "";
-      request.on("data", (chunk) => { body += chunk; });
-      request.on("end", () => { void runtime.switchInterval(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
-      return;
-    }
-    if (url === "/api/ai-chat") {
-      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
-      let body = ""; request.on("data", (chunk) => { body += chunk; });
-      request.on("end", () => { void runtime.chatWithAi(body).then((result) => json(response, 200, result)).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); }); return;
-    }
-    if (url === "/api/ai-review") {
-      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
-      void runtime.reviewLatest().then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
-      return;
-    }
-    if (url === "/api/trade-review") {
-      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
-      let body = ""; request.on("data", (chunk) => { body += chunk; });
-      request.on("end", () => { void runtime.reviewManualTrade(body).then((state) => json(response, 200, state)).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); }); return;
-    }
-    if (url === "/api/trade") {
-      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
-      let body = "";
-      request.on("data", (chunk) => { body += chunk; });
-      request.on("end", () => {
-        try {
-          void runtime.manualTrade(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
-        } catch (error) { json(response, 400, { error: error instanceof Error ? error.message : String(error) }); }
-      });
-      return;
-    }
-    if (url === "/api/symbol") {
-      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
-      let body = "";
-      request.on("data", (chunk) => { body += chunk; });
-      request.on("end", () => { void runtime.switchSymbol(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
-      return;
-    }
-    if (url === "/api/health") {
-      json(response, 200, { ok: true, updatedAt: Date.now() });
-      return;
-    }
-    const filePath = safeFilePath(url);
+    const filePath = safeFilePath(requestUrl.pathname);
     if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       json(response, 404, { error: "页面资源不存在，请先运行 npm run build:web" });
       return;
