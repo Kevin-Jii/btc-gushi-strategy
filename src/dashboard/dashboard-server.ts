@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -208,9 +209,10 @@ class DashboardRuntime {
   }
 
   public async manualTrade(body: string): Promise<void> {
-    const parsed = JSON.parse(body) as { side?: unknown; strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown };
+    const parsed = JSON.parse(body) as { side?: unknown; strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown; tradePassword?: unknown };
     const side = parsed.side === "BUY" || parsed.side === "SELL" ? parsed.side : null;
     if (!side) throw new Error("交易方向无效");
+    this.verifyTradePassword(parsed.tradePassword);
     if (side === "BUY") {
       if (parsed.strategyId !== "gushi-ma") throw new Error("买入前必须选择有效策略");
       const interval = typeof parsed.interval === "string" ? parsed.interval : "";
@@ -222,6 +224,16 @@ class DashboardRuntime {
       await this.trader.manualBuy(input);
       this.pendingManualReview = null;
     } else await this.trader.manualSell();
+  }
+
+  private verifyTradePassword(candidate: unknown): void {
+    const expected = process.env.TRADE_CONFIRM_PASSWORD ?? "";
+    if (!expected) throw new Error("服务端未配置下单确认密码，已阻止交易");
+    if (typeof candidate !== "string" || candidate.length === 0) throw new Error("请输入下单确认密码");
+    const candidateBuffer = Buffer.from(candidate);
+    const expectedBuffer = Buffer.from(expected);
+    const valid = candidateBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(candidateBuffer, expectedBuffer);
+    if (!valid) throw new Error("下单确认密码错误，已阻止交易");
   }
 
   private parseManualInput(parsed: { strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown }): { strategyId?: never; interval: string; leverage: number; marginAmount: number; contracts?: number } {
@@ -322,7 +334,10 @@ class DashboardRuntime {
     const performance = this.strategyPerformance.get("gushi-ma");
     const unrealizedProfit = status.position ? ((status.latestCandle?.close ?? status.position.entryPrice) - status.position.entryPrice) * status.position.quantity : 0;
     const unrealizedPercent = status.position && status.position.entryPrice > 0 ? (unrealizedProfit / (status.position.entryPrice * status.position.quantity)) * 100 : 0;
-    return [{ id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: status.marketConnected ? "running" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell }];
+    return [
+      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: status.marketConnected ? "running" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell },
+      { id: "macd-kdj-momentum", name: "MACD + KDJ 动量策略", version: "1.0.0", category: "动量", status: "stopped", profit: 0, profitPercent: 0, orderCount: 0, buySignal: null, sellSignal: null },
+    ];
   }
 
   private async persistMonitorSnapshot(): Promise<void> {

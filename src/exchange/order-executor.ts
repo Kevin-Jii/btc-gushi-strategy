@@ -35,13 +35,13 @@ export class OrderExecutor {
   }
 
   /** 使用 quoteOrderQty 买入，金额由账户可用余额和仓位比例决定。 */
-  public async buyWithQuote(quoteAmount: number, contracts?: number): Promise<OrderFill> {
+  public async buyWithQuote(quoteAmount: number, leverage?: number, contracts?: number): Promise<OrderFill> {
     const rules = await this.getRules();
     if (!Number.isFinite(quoteAmount) || quoteAmount <= 0) throw new Error("Buy amount must be positive");
     if (rules.minNotional > 0 && quoteAmount < rules.minNotional) {
       throw new Error(`Buy amount ${quoteAmount} is below exchange minNotional ${rules.minNotional}`);
     }
-    return this.client.marketBuy(this.symbol, quoteAmount, undefined, contracts);
+    return this.client.marketBuy(this.symbol, quoteAmount, leverage, contracts);
   }
 
   /** 卖出数量向下对齐 stepSize，并在不足最小量时拒绝下单。 */

@@ -105,7 +105,7 @@ export class OkxClient implements TradingClient {
   public async setLeverage(symbol: string, leverage: number): Promise<void> {
     if (this.config.instrumentType !== "SWAP") return;
     if (!Number.isInteger(leverage) || leverage < 1 || leverage > 100) throw new Error("杠杆必须是 1 到 100 的整数");
-    await this.privateRequest("POST", "/api/v5/account/set-leverage", { instId: symbol, lever: String(leverage), mgnMode: "cross" });
+    await this.privateRequest("POST", "/api/v5/account/set-leverage", { instId: symbol, ccy: this.config.quoteAsset, lever: String(leverage), mgnMode: "cross", posSide: "net" });
   }
 
   public async marketBuy(symbol: string, quoteOrderQty: number, _leverage?: number, requestedContracts?: number): Promise<OrderFill> {
@@ -116,6 +116,8 @@ export class OkxClient implements TradingClient {
     const contracts = requestedContracts === undefined
       ? Math.floor((quoteOrderQty / Math.max(price, 1)) / Math.max(rules.contractValue ?? 1, 1e-12))
       : Math.floor(requestedContracts / Math.max(rules.quantityStep, 1e-12)) * rules.quantityStep;
+    const impliedMargin = contracts * Math.max(rules.contractValue ?? 1, 1e-12) * price / Math.max(_leverage ?? 1, 1);
+    if (requestedContracts !== undefined && impliedMargin > quoteOrderQty * 1.02) throw new Error(`合约张数与保证金/杠杆不匹配：${contracts} 张约需 ${impliedMargin.toFixed(4)} ${this.config.quoteAsset} 保证金，但本次仅授权 ${quoteOrderQty.toFixed(4)}`);
     if (contracts < rules.minQuantity) throw new Error(`合约张数不足最小下单量：${contracts} < ${rules.minQuantity}`);
     if (contracts > rules.maxQuantity) throw new Error(`合约张数超过交易所上限：${contracts} > ${rules.maxQuantity}`);
     const fill = await this.placeMarketOrder(symbol, "buy", contracts, "base_ccy");
@@ -290,6 +292,9 @@ export class OkxClient implements TradingClient {
     if (!response.ok) throw new Error(`OKX HTTP ${response.status}: ${await response.text()}`);
     const data = await response.json() as JsonRecord;
     if (String(data.code ?? "0") !== "0") throw new Error(`OKX API ${String(data.code)}: ${String(data.msg ?? "unknown error")}`);
+    const rows = Array.isArray(data.data) ? data.data as JsonRecord[] : [];
+    const failed = rows.find((row) => String(row.sCode ?? "0") !== "0");
+    if (failed) throw new Error(`OKX operation ${String(failed.sCode)}: ${String(failed.sMsg ?? data.msg ?? "unknown error")}`);
     return data;
   }
 

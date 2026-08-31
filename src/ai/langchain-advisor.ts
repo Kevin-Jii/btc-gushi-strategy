@@ -351,7 +351,7 @@ export class LangChainAdvisor {
     invalidation：
     只写最关键的失效条件。
 
-    如果用户消息包含手动下单意图，必须额外评估保证金金额、杠杆和合约张数是否与账户可用余额及风险状态相称。此时必须在 JSON 中输出 positionSizingApproved（只能是 true 或 false），并尽量提供 recommendedMargin、recommendedContracts、recommendedLeverage。即使确定性策略没有买入信号，也可以单独判断本次手动仓位是否合理；但 allowEntry 仍必须为 false。AI 只能审核和建议，不能创建订单。
+    如果用户消息包含手动下单意图，必须额外评估保证金金额、杠杆和合约张数是否与账户可用余额及风险状态相称。此时必须在 JSON 中输出 positionSizingApproved（只能是 true 或 false），以及三个仓位参数建议：recommendedMargin、recommendedContracts、recommendedLeverage。建议必须基于用户提供的可用余额、最新价格、名义价值、持仓和风险状态；不能凭空扩大风险。即使确定性策略没有买入信号，也可以单独判断本次手动仓位是否合理；但 allowEntry 仍必须为 false。AI 只能审核和建议，不能创建订单。
     
     不要输出：
     - Markdown；

@@ -301,7 +301,7 @@ export class LiveTrader {
     const quoteAmount = manualMarginAmount !== undefined ? manualMarginAmount * (leverage ?? 1) : (quote?.free ?? 0) * this.options.positionFraction;
     if (manualMarginAmount !== undefined && manualMarginAmount > (quote?.free ?? 0)) throw new Error(`保证金超过可用 ${this.currentQuoteAsset}：${manualMarginAmount}`);
     if (leverage && this.client.setLeverage) await this.client.setLeverage(this.currentSymbol, leverage);
-    const fill = await this.executor.buyWithQuote(quoteAmount, contracts);
+    const fill = await this.executor.buyWithQuote(quoteAmount, leverage, contracts);
     if (fill.executedQuantity <= 0 || fill.averagePrice <= 0) throw new Error("交易所买单没有成交");
     this.position = { side: "long", entryPrice: fill.averagePrice || price, quantity: fill.executedQuantity, entryTimestamp: fill.transactTime, entryBarIndex: this.candles.length - 1, peakPrice: fill.averagePrice || price };
     this.entryOrderId = fill.orderId;
