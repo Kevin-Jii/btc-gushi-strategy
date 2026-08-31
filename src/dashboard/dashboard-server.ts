@@ -198,6 +198,14 @@ class DashboardRuntime {
     await this.trader.reviewLatest();
   }
 
+  public async chatWithAi(body: string): Promise<{ answer: string }> {
+    const parsed = JSON.parse(body) as { message?: unknown };
+    if (typeof parsed.message !== "string" || parsed.message.trim().length === 0) throw new Error("请输入要询问 AI 的内容");
+    const snapshot = this.state();
+    const answer = await this.aiAdvisor.chat(parsed.message.trim(), { symbol: snapshot.symbol, latestPrice: snapshot.market.latestPrice, position: snapshot.position, orders: snapshot.orders.slice(0, 20), account: { quoteAsset: snapshot.account.quoteAsset, quoteFree: snapshot.account.quoteFree, estimatedEquity: snapshot.account.estimatedEquity } });
+    return { answer };
+  }
+
   public async reviewManualTrade(body: string): Promise<DashboardState> {
     const parsed = JSON.parse(body) as { strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown };
     const input = this.parseManualInput(parsed);
@@ -409,6 +417,11 @@ async function main(): Promise<void> {
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => { void runtime.switchInterval(body).then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); });
       return;
+    }
+    if (url === "/api/ai-chat") {
+      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
+      let body = ""; request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => { void runtime.chatWithAi(body).then((result) => json(response, 200, result)).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); }); return;
     }
     if (url === "/api/ai-review") {
       if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }

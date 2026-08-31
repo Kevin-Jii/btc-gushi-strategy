@@ -82,6 +82,7 @@ export class LangChainAdvisor {
   private readonly minIntervalMs: number;
   private readonly minConfidence: number;
   private readonly chain: ReturnType<ChatPromptTemplate["pipe"]> | null;
+  private readonly chatModel: ChatOpenAI | null;
   private lastReviewAt = 0;
   private inFlight: Promise<AiValidation> | null = null;
 
@@ -93,6 +94,7 @@ export class LangChainAdvisor {
     this.minConfidence = config.minConfidence;
     if (!config.enabled) {
       this.chain = null;
+      this.chatModel = null;
       return;
     }
     const isDeepSeek = config.baseUrl?.includes("deepseek.com") ?? false;
@@ -108,6 +110,7 @@ export class LangChainAdvisor {
     });
     // 返回内容仍由下方 Zod schema 校验，避免模型输出越过审计边界。
     // 两条输出路径的 LangChain 泛型不同，统一为 prompt.pipe 可接受的 Runnable 类型。
+    this.chatModel = model;
     const structuredModel = (
       isDeepSeek
         ? model
@@ -415,6 +418,15 @@ export class LangChainAdvisor {
     this.chain = prompt.pipe(structuredModel);
   }
 
+  public async chat(message: string, context: { symbol: string; latestPrice: number; position: unknown; orders: unknown[]; account: unknown }): Promise<string> {
+    if (!this.enabled || !this.chatModel) throw new Error("AI 未启用");
+    const response = await this.chatModel.invoke([
+      ["system", "你是交易终端的只读 AI 监控助手。只能根据提供的实时账户、持仓、订单和行情回答。不得创建、修改或确认订单；不要索要 API 密钥。回答简洁，指出风险和需要用户确认的事项。"],
+      ["human", `用户问题：${message}\n实时上下文：${JSON.stringify(context)}`],
+    ]);
+    return typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  }
+
   public isVetoMode(): boolean {
     return this.enabled && this.decisionMode === "veto";
   }
@@ -458,6 +470,7 @@ export class LangChainAdvisor {
         }),
         position: JSON.stringify(input.position),
         tradeIntent: JSON.stringify(input.tradeIntent ?? null),
+        recentOrders: JSON.stringify(input.recentOrders ?? []),
       });
       const result = this.parseModelResult(rawResult);
       return this.normalize(result, "langchain", Boolean(input.tradeIntent));

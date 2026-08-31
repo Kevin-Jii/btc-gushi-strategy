@@ -43,4 +43,12 @@ export interface AiReviewInput {
   evaluation: StrategyEvaluation;
   position: Position | null;
   tradeIntent?: AiTradeIntent;
+  recentOrders?: Array<{
+    exchangeOrderId: string;
+    side: "BUY" | "SELL";
+    quantity: number;
+    price: number;
+    reason: string;
+    timestamp: number;
+  }>;
 }
