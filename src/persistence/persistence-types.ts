@@ -1,4 +1,4 @@
-import type { AiReviewInput, AiValidation } from "../ai/ai-types.js";
+import type { AiReviewInput, AiTradeOutcomeReview, AiValidation } from "../ai/ai-types.js";
 
 export interface PersistedOrder {
   exchangeOrderId: string;
@@ -49,6 +49,21 @@ export interface StrategyPerformance {
   completedTrades: number;
 }
 
+export interface PersistedTradeOutcomeReview {
+  id: number;
+  strategyId: string;
+  symbol: string;
+  interval: string;
+  entryOrderId: string;
+  exitOrderId: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  realizedProfit: number;
+  realizedProfitPercent: number;
+  review: AiTradeOutcomeReview;
+}
+
 export interface PersistedAiReviewRecord extends PersistedAiReview {
   id: number;
   platform: string;
@@ -75,6 +90,8 @@ export interface TradingPersistence {
   saveOrder(order: PersistedOrder): Promise<void>;
   saveAiReview(review: PersistedAiReview): Promise<void>;
   saveMonitorSnapshot(snapshot: StrategyMonitorSnapshot): Promise<void>;
+  saveTradeOutcomeReview(review: PersistedTradeOutcomeReview): Promise<void>;
+  loadTradeOutcomeReviews(limit?: number, strategyId?: string): Promise<PersistedTradeOutcomeReview[]>;
   loadRecentOrders(limit?: number): Promise<PersistedOrder[]>;
   loadOrders(query?: OrderQuery): Promise<PersistedOrder[]>;
   loadAiReviews(query?: AiReviewQuery): Promise<PersistedAiReviewRecord[]>;

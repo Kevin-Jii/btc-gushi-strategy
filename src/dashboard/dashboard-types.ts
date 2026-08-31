@@ -1,7 +1,7 @@
 import type { AccountBalance, SpotInstrument } from "../exchange/trading-types.js";
 import type { Candle, Position } from "../data/types.js";
 import type { LiveTraderAction } from "../live/live-trader.js";
-import type { AiDecisionMode, AiValidation } from "../ai/ai-types.js";
+import type { AiDecisionMode, AiTradeOutcomeReview, AiValidation } from "../ai/ai-types.js";
 
 export interface StrategyDashboardSummary {
   id: string;
@@ -86,6 +86,7 @@ export interface DashboardState {
     model: string;
     latest: AiValidation | null;
     history: AiValidation[];
+    outcomeReviews: Array<{ strategyId: string; symbol: string; realizedProfit: number; realizedProfitPercent: number; review: AiTradeOutcomeReview }>;
   };
   activity: DashboardActivity[];
   strategies: StrategyDashboardSummary[];

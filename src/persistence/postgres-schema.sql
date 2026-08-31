@@ -72,3 +72,22 @@ CREATE TABLE IF NOT EXISTS strategy_monitor_snapshots (
   strategy_signal TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS strategy_monitor_time_idx ON strategy_monitor_snapshots (strategy_id, symbol, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_trade_outcome_reviews (
+  id BIGSERIAL PRIMARY KEY,
+  strategy_id TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  candle_interval TEXT NOT NULL,
+  entry_order_id TEXT NOT NULL,
+  exit_order_id TEXT NOT NULL,
+  entry_price NUMERIC(36, 18) NOT NULL,
+  exit_price NUMERIC(36, 18) NOT NULL,
+  quantity NUMERIC(36, 18) NOT NULL,
+  realized_profit NUMERIC(36, 18) NOT NULL,
+  realized_profit_percent NUMERIC(18, 8) NOT NULL,
+  review JSONB NOT NULL,
+  reviewed_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (entry_order_id, exit_order_id)
+);
+CREATE INDEX IF NOT EXISTS ai_trade_outcome_strategy_time_idx ON ai_trade_outcome_reviews (strategy_id, reviewed_at DESC);

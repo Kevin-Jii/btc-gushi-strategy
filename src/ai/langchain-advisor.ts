@@ -7,6 +7,16 @@ import type {
   AiValidation,
 } from "./ai-types.js";
 
+const outcomeSchema = z.object({
+  outcome: z.enum(["WIN", "LOSS", "BREAKEVEN"]),
+  summary: z.string().min(1).max(500),
+  whatWorked: z.array(z.string().min(1).max(180)).max(6),
+  whatFailed: z.array(z.string().min(1).max(180)).max(6),
+  lessons: z.array(z.string().min(1).max(180)).max(6),
+  nextChecks: z.array(z.string().min(1).max(180)).max(6),
+  confidence: z.number().min(0).max(1),
+});
+
 const validationSchema = z.object({
   recommendation: z.enum(["BUY", "SELL", "HOLD"]),
   confidence: z.number().min(0).max(1),
@@ -396,6 +406,9 @@ export class LangChainAdvisor {
     当前策略持仓：
     {position}
 
+    最近订单数据（只读，用于监控与复盘）：
+    {recentOrders}
+
     手动下单意图（如果为空表示策略自动审核）：
     {tradeIntent}
     
@@ -418,13 +431,35 @@ export class LangChainAdvisor {
     this.chain = prompt.pipe(structuredModel);
   }
 
+  public async reviewTradeOutcome(input: { strategyId: string; symbol: string; interval: string; entry: unknown; exit: unknown; realizedProfit: number; realizedProfitPercent: number; strategyContext: unknown; priorReviews: unknown[] }): Promise<import("./ai-types.js").AiTradeOutcomeReview> {
+    if (!this.enabled || !this.chatModel) throw new Error("AI 未启用");
+    const response = await this.chatModel.invoke([
+      ["system", "你是量化策略复盘器，只能基于提供的已完成交易数据复盘。禁止创建订单、修改策略或补充外部信息。请只输出合法 JSON，格式包含 outcome、summary、whatWorked、whatFailed、lessons、nextChecks、confidence。"],
+      ["human", `请复盘这笔 ${input.strategyId} 交易。交易数据：${JSON.stringify(input)}\n请返回合法 JSON。`],
+    ]);
+    const content = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+    try {
+      const parsed = outcomeSchema.parse(JSON.parse(content));
+      return { ...parsed, reviewedAt: Date.now(), source: "langchain" };
+    } catch (error) {
+      return { reviewedAt: Date.now(), outcome: input.realizedProfit > 0 ? "WIN" : input.realizedProfit < 0 ? "LOSS" : "BREAKEVEN", summary: "AI 复盘输出无法通过结构化校验。", whatWorked: [], whatFailed: [error instanceof Error ? error.message : String(error)], lessons: [], nextChecks: ["等待下一次结构化复盘"], confidence: 0, source: "error" };
+    }
+  }
+
   public async chat(message: string, context: { symbol: string; latestPrice: number; position: unknown; orders: unknown[]; account: unknown }): Promise<string> {
     if (!this.enabled || !this.chatModel) throw new Error("AI 未启用");
     const response = await this.chatModel.invoke([
-      ["system", "你是交易终端的只读 AI 监控助手。只能根据提供的实时账户、持仓、订单和行情回答。不得创建、修改或确认订单；不要索要 API 密钥。回答简洁，指出风险和需要用户确认的事项。"],
-      ["human", `用户问题：${message}\n实时上下文：${JSON.stringify(context)}`],
+      ["system", "你是交易终端的只读 AI 监控助手。只能根据提供的实时账户、持仓、订单和行情回答。不得创建、修改或确认订单；不要索要 API 密钥。请只输出合法 JSON，格式必须是 {\"answer\":\"你的中文回答\"}，不要输出 Markdown 或 JSON 代码块。回答简洁，指出风险和需要用户确认的事项。"],
+      ["human", `用户问题：${message}\n实时上下文：${JSON.stringify(context)}\n请返回合法 JSON。`],
     ]);
-    return typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+    const content = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+    try {
+      const parsed = JSON.parse(content) as { answer?: unknown };
+      if (typeof parsed.answer === "string" && parsed.answer.trim()) return parsed.answer;
+    } catch {
+      // 兼容非 JSON 模型或兼容服务的普通文本回退。
+    }
+    return content;
   }
 
   public isVetoMode(): boolean {

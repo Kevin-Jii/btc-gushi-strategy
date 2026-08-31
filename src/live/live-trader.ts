@@ -47,6 +47,7 @@ export interface LiveTraderOptions {
   adoptExistingPosition?: boolean;
   onUpdate?: (status: LiveTraderStatus) => void | Promise<void>;
   onOrder?: (action: LiveTraderAction) => void | Promise<void>;
+  getRecentOrders?: () => AiReviewInput["recentOrders"];
   onAiReview?: (input: AiReviewInput, result: AiValidation) => void | Promise<void>;
 }
 
@@ -283,6 +284,7 @@ export class LiveTrader {
       recentCandles: this.candles.slice(-30),
       evaluation,
       position: this.position ? { ...this.position } : null,
+      recentOrders: this.options.getRecentOrders?.() ?? [],
       ...(tradeIntent ? { tradeIntent } : {}),
     };
     const result = await advisor.review(input, force);

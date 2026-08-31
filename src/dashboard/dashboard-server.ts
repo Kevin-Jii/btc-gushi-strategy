@@ -68,6 +68,7 @@ class DashboardRuntime {
   private readonly aiAdvisor: LangChainAdvisor;
   private readonly repository: PostgresRepository | null;
   private strategyPerformance = new Map<string, StrategyPerformance>();
+  private outcomeReviews: Array<import("../persistence/persistence-types.js").PersistedTradeOutcomeReview> = [];
   private pendingManualReview: { fingerprint: string; reviewedAt: number } | null = null;
 
   public constructor() {
@@ -84,7 +85,8 @@ class DashboardRuntime {
       mode: this.runtime.mode,
       adoptExistingPosition: process.env.OKX_ADOPT_EXISTING_POSITION === "true",
       onUpdate: (status) => this.handleTraderUpdate(status),
-      onOrder: (action) => this.repository?.saveOrder({ exchangeOrderId: action.exchangeOrderId, strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", platform: this.runtime.platform, mode: this.runtime.mode, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, executedAt: action.timestamp, ...(action.entryOrderId ? { entryOrderId: action.entryOrderId } : {}), ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) }).then(() => this.refreshPerformance()),
+      onOrder: (action) => this.handleOrderAction(action),
+      getRecentOrders: () => this.orders.slice(0, 20).map((order) => ({ exchangeOrderId: order.exchangeOrderId, side: order.side, quantity: order.quantity, price: order.price, reason: order.reason, timestamp: order.timestamp })),
       onAiReview: (input, result) => this.repository?.saveAiReview({ strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", interval: this.runtime.client.interval ?? this.runtime.interval, input, result }),
     });
   }
@@ -94,6 +96,7 @@ class DashboardRuntime {
       await this.repository.initialize();
       const [orders] = await Promise.all([this.repository.loadRecentOrders(100), this.refreshPerformance()]);
       this.orders = orders.map((order, index) => this.toDashboardOrder(order, index));
+      this.outcomeReviews = await this.repository.loadTradeOutcomeReviews(20);
       logger.info(`PostgreSQL 已连接，加载 ${orders.length} 条历史订单`);
     } else {
       logger.warn("PostgreSQL 持久化已通过 POSTGRES_ENABLED=false 关闭");
@@ -163,6 +166,7 @@ class DashboardRuntime {
         model: this.aiAdvisor.modelName,
         latest: status.aiValidation,
         history: status.aiHistory,
+        outcomeReviews: this.outcomeReviews.map((item) => ({ strategyId: item.strategyId, symbol: item.symbol, realizedProfit: item.realizedProfit, realizedProfitPercent: item.realizedProfitPercent, review: item.review })),
       },
       activity: this.activity,
       strategies: this.strategySummaries(status),
@@ -176,6 +180,10 @@ class DashboardRuntime {
 
   public async getAiReviews(query: { limit?: number; strategyId?: string; symbol?: string }): Promise<PersistedAiReviewRecord[]> {
     return this.repository ? this.repository.loadAiReviews(query) : [];
+  }
+
+  public async getTradeOutcomeReviews(query: { limit?: number; strategyId?: string }): Promise<import("../persistence/persistence-types.js").PersistedTradeOutcomeReview[]> {
+    return this.repository ? this.repository.loadTradeOutcomeReviews(query.limit, query.strategyId) : [];
   }
 
   public async getPerformance(strategyId?: string): Promise<StrategyPerformance[]> {
@@ -278,6 +286,21 @@ class DashboardRuntime {
     this.clients.clear();
   }
 
+  private async handleOrderAction(action: import("../live/live-trader.js").LiveTraderAction): Promise<void> {
+    const order: PersistedOrder = { exchangeOrderId: action.exchangeOrderId, strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", platform: this.runtime.platform, mode: this.runtime.mode, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, executedAt: action.timestamp, ...(action.entryOrderId ? { entryOrderId: action.entryOrderId } : {}), ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) };
+    await this.repository?.saveOrder(order);
+    await this.refreshPerformance();
+    if (action.side !== "SELL" || action.realizedProfit === undefined || !action.entryOrderId || !this.aiAdvisor.enabled) return;
+    const entry = this.orders.find((item) => item.exchangeOrderId === action.entryOrderId) ?? (this.repository ? await this.findPersistedEntryOrder(action.entryOrderId) : null);
+    if (!entry) return;
+    const priorReviews = this.repository ? await this.repository.loadTradeOutcomeReviews(10, "gushi-ma") : [];
+    const review = await this.aiAdvisor.reviewTradeOutcome({ strategyId: "gushi-ma", symbol: this.trader.symbol, interval: order.interval, entry: { orderId: entry.exchangeOrderId, price: entry.price, quantity: entry.quantity, reason: entry.reason, timestamp: entry.timestamp }, exit: { orderId: action.exchangeOrderId, price: action.price, reason: action.reason, timestamp: action.timestamp }, realizedProfit: action.realizedProfit, realizedProfitPercent: action.realizedProfitPercent ?? 0, strategyContext: this.trader.getStatus().latestEvaluation, priorReviews });
+    const persistedReview = { id: 0, strategyId: "gushi-ma", symbol: this.trader.symbol, interval: order.interval, entryOrderId: entry.exchangeOrderId, exitOrderId: action.exchangeOrderId, entryPrice: entry.price, exitPrice: action.price, quantity: action.quantity, realizedProfit: action.realizedProfit, realizedProfitPercent: action.realizedProfitPercent ?? 0, review };
+    this.outcomeReviews = [persistedReview, ...this.outcomeReviews].slice(0, 20);
+    if (this.repository) await this.repository.saveTradeOutcomeReview(persistedReview);
+    this.addActivity({ type: "ai", title: `AI 交易复盘 ${review.outcome}`, detail: review.summary });
+  }
+
   private handleTraderUpdate(status: LiveTraderStatus): void {
     const action = status.lastAction;
     if (action && action.timestamp > this.previousActionTimestamp) {
@@ -333,6 +356,12 @@ class DashboardRuntime {
       this.refreshing = false;
       this.broadcast();
     }
+  }
+
+  private async findPersistedEntryOrder(exchangeOrderId: string): Promise<DashboardOrder | null> {
+    const rows = await this.repository?.loadOrders({ limit: 100, strategyId: "gushi-ma" });
+    const row = rows?.find((order) => order.exchangeOrderId === exchangeOrderId);
+    return row ? this.toDashboardOrder(row, 0) : null;
   }
 
   private strategySummaries(status: LiveTraderStatus): StrategyDashboardSummary[] {
@@ -405,6 +434,10 @@ async function main(): Promise<void> {
     if (url === "/api/ai-reviews") {
       const reviewQuery = { limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}), ...(requestUrl.searchParams.get("symbol") ? { symbol: requestUrl.searchParams.get("symbol")! } : {}) };
       void runtime.getAiReviews(reviewQuery).then((reviews) => json(response, 200, reviews)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
+      return;
+    }
+    if (url === "/api/trade-outcome-reviews") {
+      void runtime.getTradeOutcomeReviews({ limit: queryLimit, ...(requestUrl.searchParams.get("strategyId") ? { strategyId: requestUrl.searchParams.get("strategyId")! } : {}) }).then((reviews) => json(response, 200, reviews)).catch((error) => json(response, 500, { error: error instanceof Error ? error.message : String(error) }));
       return;
     }
     if (url === "/api/performance") {

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool, type PoolConfig } from "pg";
-import type { AiReviewQuery, PersistedAiReview, PersistedAiReviewRecord, PersistedOrder, OrderQuery, StrategyMonitorSnapshot, StrategyPerformance, TradingPersistence } from "./persistence-types.js";
+import type { AiReviewQuery, PersistedAiReview, PersistedAiReviewRecord, PersistedOrder, PersistedTradeOutcomeReview, OrderQuery, StrategyMonitorSnapshot, StrategyPerformance, TradingPersistence } from "./persistence-types.js";
 
 function finiteNumber(value: string | number | null | undefined): number {
   const parsed = Number(value ?? 0);
@@ -67,13 +67,25 @@ export class PostgresRepository implements TradingPersistence {
         result.model, result.source, result.summary, JSON.stringify(result.evidence),
         JSON.stringify(result.risks), result.invalidation,
         JSON.stringify(input.evaluation),
-        JSON.stringify({ candle: input.candle, recentCandles: input.recentCandles, position: input.position }),
+        JSON.stringify({ candle: input.candle, recentCandles: input.recentCandles, position: input.position, recentOrders: input.recentOrders ?? [] }),
         new Date(result.generatedAt)],
     );
   }
 
   public async saveMonitorSnapshot(snapshot: StrategyMonitorSnapshot): Promise<void> {
     await this.pool.query(`INSERT INTO strategy_monitor_snapshots (strategy_id,symbol,candle_interval,recorded_at,equity,unrealized_profit,position_quantity,entry_price,mark_price,termination_condition,strategy_signal) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [snapshot.strategyId, snapshot.symbol, snapshot.interval, new Date(snapshot.timestamp), snapshot.equity, snapshot.unrealizedProfit, snapshot.positionQuantity, snapshot.entryPrice, snapshot.markPrice, snapshot.terminationCondition, snapshot.signal]);
+  }
+
+  public async saveTradeOutcomeReview(review: PersistedTradeOutcomeReview): Promise<void> {
+    await this.pool.query(`INSERT INTO ai_trade_outcome_reviews (strategy_id,symbol,candle_interval,entry_order_id,exit_order_id,entry_price,exit_price,quantity,realized_profit,realized_profit_percent,review,reviewed_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12) ON CONFLICT (entry_order_id,exit_order_id) DO NOTHING`, [review.strategyId, review.symbol, review.interval, review.entryOrderId, review.exitOrderId, review.entryPrice, review.exitPrice, review.quantity, review.realizedProfit, review.realizedProfitPercent, JSON.stringify(review.review), new Date(review.review.reviewedAt)]);
+  }
+
+  public async loadTradeOutcomeReviews(limit = 20, strategyId?: string): Promise<PersistedTradeOutcomeReview[]> {
+    const bounded = Math.max(1, Math.min(limit, 100));
+    const values: unknown[] = []; const where = strategyId ? "WHERE strategy_id = $1" : "";
+    if (strategyId) values.push(strategyId); values.push(bounded);
+    const result = await this.pool.query(`SELECT * FROM ai_trade_outcome_reviews ${where} ORDER BY reviewed_at DESC LIMIT $${values.length}`, values);
+    return result.rows.map((row) => ({ id: Number(row.id), strategyId: String(row.strategy_id), symbol: String(row.symbol), interval: String(row.candle_interval), entryOrderId: String(row.entry_order_id), exitOrderId: String(row.exit_order_id), entryPrice: finiteNumber(row.entry_price), exitPrice: finiteNumber(row.exit_price), quantity: finiteNumber(row.quantity), realizedProfit: finiteNumber(row.realized_profit), realizedProfitPercent: finiteNumber(row.realized_profit_percent), review: row.review }));
   }
 
   public async loadRecentOrders(limit = 100): Promise<PersistedOrder[]> {

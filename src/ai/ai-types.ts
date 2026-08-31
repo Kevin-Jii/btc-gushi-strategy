@@ -34,6 +34,18 @@ export interface AiTradeIntent {
   contracts?: number;
 }
 
+export interface AiTradeOutcomeReview {
+  reviewedAt: number;
+  outcome: "WIN" | "LOSS" | "BREAKEVEN";
+  summary: string;
+  whatWorked: string[];
+  whatFailed: string[];
+  lessons: string[];
+  nextChecks: string[];
+  confidence: number;
+  source: "langchain" | "error";
+}
+
 export interface AiReviewInput {
   symbol: string;
   platform: string;
