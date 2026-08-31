@@ -8,6 +8,8 @@ export * from "./core/index.js";
 
 // 策略插件
 export { GushiStrategy } from "./gushi/index.js";
+export { MacdKdjStrategy } from "./macd-kdj/index.js";
+export type { MacdKdjStrategyConfig, MacdKdjSnapshot } from "./macd-kdj/index.js";
 export type { GushiStrategyConfig, GushiContext } from "./gushi/index.js";
 
 // 保留旧接口以兼容现有代码

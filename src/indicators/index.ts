@@ -8,6 +8,9 @@ export * from "./core/index.js";
 
 // 保留旧代码（兼容）
 export { calculateMA, calculateBias } from "./moving-average.js";
+export { calculateMacd, calculateEma } from "./macd.js";
+export { calculateKdj } from "./kdj.js";
+export { calculateAtr } from "./atr.js";
 export {
   calculateAverage,
   calculatePreviousVolumeMA,
