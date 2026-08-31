@@ -116,7 +116,7 @@ export class PostgresRepository implements TradingPersistence {
       id: Number(row.id), strategyId: String(row.strategy_id), strategyName: String(row.strategy_name), strategyVersion: String(row.strategy_version),
       platform: String(row.platform), mode: String(row.trading_mode), symbol: String(row.symbol), interval: String(row.candle_interval),
       input: { symbol: String(row.symbol), platform: String(row.platform), mode: String(row.trading_mode), candle: row.market_context.candle, recentCandles: row.market_context.recentCandles, evaluation: row.strategy_signal, position: row.market_context.position },
-      result: { generatedAt: new Date(row.generated_at).getTime(), recommendation: row.recommendation, confidence: finiteNumber(row.confidence), ruleStatus: row.rule_status, allowEntry: Boolean(row.allow_entry), model: String(row.model), source: row.source, summary: String(row.summary), evidence: row.evidence, risks: row.risks, invalidation: String(row.invalidation) },
+      result: { generatedAt: new Date(row.generated_at).getTime(), recommendation: row.recommendation, confidence: finiteNumber(row.confidence), ruleStatus: row.rule_status, positionSizingApproved: true, allowEntry: Boolean(row.allow_entry), model: String(row.model), source: row.source, summary: String(row.summary), evidence: row.evidence, risks: row.risks, invalidation: String(row.invalidation) },
       generatedAt: new Date(row.generated_at).getTime(),
     }));
   }

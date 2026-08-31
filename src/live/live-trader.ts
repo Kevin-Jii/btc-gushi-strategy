@@ -70,6 +70,8 @@ export class LiveTrader {
   private aiValidation: AiValidation | null = null;
   private readonly aiHistory: AiValidation[] = [];
   private entryOrderId: string | null = null;
+  private manualReviewFingerprint: string | null = null;
+  private manualReviewResult: AiValidation | null = null;
 
   public constructor(
     private readonly client: TradingClient,
@@ -116,6 +118,8 @@ export class LiveTrader {
     this.lastCandleTimestamp = 0;
     this.position = null;
     this.entryOrderId = null;
+    this.manualReviewFingerprint = null;
+    this.manualReviewResult = null;
     await this.start(historyLimit);
   }
 
@@ -123,9 +127,27 @@ export class LiveTrader {
   public get quoteAsset(): string { return this.currentQuoteAsset; }
 
   /** 手动交易入口，供受控 Dashboard 操作使用。 */
-  public async manualBuy(): Promise<void> {
+  public async reviewManualBuy(input: { leverage: number; marginAmount: number; contracts?: number }): Promise<AiValidation | null> {
     if (this.position) throw new Error("当前已有持仓，不能重复买入");
-    await this.openPosition(this.latestCandle?.close ?? 0, "manual-buy");
+    if (!Number.isInteger(input.leverage) || input.leverage < 1 || input.leverage > 100) throw new Error("杠杆必须是 1 到 100 的整数");
+    if (!Number.isFinite(input.marginAmount) || input.marginAmount <= 0) throw new Error("保证金金额必须大于 0");
+    const balances = await this.client.getBalances();
+    const availableBalance = balances.find((balance) => balance.asset === this.currentQuoteAsset)?.free ?? 0;
+    if (input.marginAmount > availableBalance) throw new Error(`保证金超过可用 ${this.currentQuoteAsset}：${input.marginAmount}`);
+    const latestPrice = await this.client.getLatestPrice(this.currentSymbol);
+    const intent = { side: "BUY" as const, leverage: input.leverage, marginAmount: input.marginAmount, availableBalance, latestPrice, notionalValue: input.marginAmount * input.leverage, ...(input.contracts !== undefined ? { contracts: input.contracts } : {}) };
+    const result = await this.reviewLatest(intent);
+    this.manualReviewFingerprint = JSON.stringify(input);
+    this.manualReviewResult = result;
+    return result;
+  }
+
+  public async manualBuy(input: { leverage: number; marginAmount: number; contracts?: number }): Promise<void> {
+    if (this.position) throw new Error("当前已有持仓，不能重复买入");
+    if (this.options.aiAdvisor?.enabled && (this.manualReviewFingerprint !== JSON.stringify(input) || !this.manualReviewResult || this.manualReviewResult.source === "error" || !this.manualReviewResult.positionSizingApproved)) throw new Error("本次下单参数尚未通过 AI 仓位审核，已阻止手动下单");
+    if (!Number.isInteger(input.leverage) || input.leverage < 1 || input.leverage > 100) throw new Error("杠杆必须是 1 到 100 的整数");
+    if (!Number.isFinite(input.marginAmount) || input.marginAmount <= 0) throw new Error("保证金金额必须大于 0");
+    await this.openPosition(this.latestCandle?.close ?? 0, `manual-buy · ${input.leverage}x · ${input.marginAmount} USDT`, input.marginAmount, input.leverage, input.contracts);
   }
 
   public async manualSell(): Promise<void> {
@@ -134,10 +156,10 @@ export class LiveTrader {
   }
 
   /** 手动审核最近一根已收盘 K 线，不触发下单。 */
-  public async reviewLatest(): Promise<void> {
+  public async reviewLatest(intent?: import("../ai/ai-types.js").AiTradeIntent): Promise<AiValidation | null> {
     const closedCandle = [...this.candles].reverse().find((candle) => candle.isClosed !== false) ?? this.latestCandle;
     if (!closedCandle || !this.latestEvaluation) throw new Error("暂无可审核的已收盘 K 线或策略评估");
-    await this.runAiReview(closedCandle, this.latestEvaluation, true);
+    return this.runAiReview(closedCandle, this.latestEvaluation, true, intent);
   }
 
   /** 启动前加载足够的历史数据，使 MA120 和 G 规则立即可用。 */
@@ -249,6 +271,7 @@ export class LiveTrader {
     candle: Candle,
     evaluation: StrategyEvaluation,
     force: boolean,
+    tradeIntent?: import("../ai/ai-types.js").AiTradeIntent,
   ): Promise<AiValidation | null> {
     const advisor = this.options.aiAdvisor;
     if (!advisor) return null;
@@ -260,6 +283,7 @@ export class LiveTrader {
       recentCandles: this.candles.slice(-30),
       evaluation,
       position: this.position ? { ...this.position } : null,
+      ...(tradeIntent ? { tradeIntent } : {}),
     };
     const result = await advisor.review(input, force);
     if (!result) return null;
@@ -271,11 +295,13 @@ export class LiveTrader {
     return result;
   }
 
-  private async openPosition(price: number, reason: string): Promise<void> {
+  private async openPosition(price: number, reason: string, manualMarginAmount?: number, leverage?: number, contracts?: number): Promise<void> {
     const balances = await this.client.getBalances();
     const quote = balances.find((balance) => balance.asset === this.currentQuoteAsset);
-    const quoteAmount = (quote?.free ?? 0) * this.options.positionFraction;
-    const fill = await this.executor.buyWithQuote(quoteAmount);
+    const quoteAmount = manualMarginAmount !== undefined ? manualMarginAmount * (leverage ?? 1) : (quote?.free ?? 0) * this.options.positionFraction;
+    if (manualMarginAmount !== undefined && manualMarginAmount > (quote?.free ?? 0)) throw new Error(`保证金超过可用 ${this.currentQuoteAsset}：${manualMarginAmount}`);
+    if (leverage && this.client.setLeverage) await this.client.setLeverage(this.currentSymbol, leverage);
+    const fill = await this.executor.buyWithQuote(quoteAmount, contracts);
     if (fill.executedQuantity <= 0 || fill.averagePrice <= 0) throw new Error("交易所买单没有成交");
     this.position = { side: "long", entryPrice: fill.averagePrice || price, quantity: fill.executedQuantity, entryTimestamp: fill.transactTime, entryBarIndex: this.candles.length - 1, peakPrice: fill.averagePrice || price };
     this.entryOrderId = fill.orderId;

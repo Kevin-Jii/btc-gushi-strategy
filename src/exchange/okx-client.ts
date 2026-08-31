@@ -102,14 +102,23 @@ export class OkxClient implements TradingClient {
     return price;
   }
 
-  public async marketBuy(symbol: string, quoteOrderQty: number): Promise<OrderFill> {
+  public async setLeverage(symbol: string, leverage: number): Promise<void> {
+    if (this.config.instrumentType !== "SWAP") return;
+    if (!Number.isInteger(leverage) || leverage < 1 || leverage > 100) throw new Error("杠杆必须是 1 到 100 的整数");
+    await this.privateRequest("POST", "/api/v5/account/set-leverage", { instId: symbol, lever: String(leverage), mgnMode: "cross" });
+  }
+
+  public async marketBuy(symbol: string, quoteOrderQty: number, _leverage?: number, requestedContracts?: number): Promise<OrderFill> {
     if (quoteOrderQty <= 0) throw new Error("Buy amount must be positive");
     if (this.config.instrumentType === "SPOT") return this.placeMarketOrder(symbol, "buy", quoteOrderQty, "quote_ccy");
     const rules = await this.getSymbolRules(symbol);
     const price = await this.getLatestPrice(symbol);
-    const contracts = Math.floor((quoteOrderQty / Math.max(price, 1)) / Math.max(rules.contractValue ?? 1, 1e-12));
+    const contracts = requestedContracts === undefined
+      ? Math.floor((quoteOrderQty / Math.max(price, 1)) / Math.max(rules.contractValue ?? 1, 1e-12))
+      : Math.floor(requestedContracts / Math.max(rules.quantityStep, 1e-12)) * rules.quantityStep;
     if (contracts < rules.minQuantity) throw new Error(`合约张数不足最小下单量：${contracts} < ${rules.minQuantity}`);
-    const fill = await this.placeMarketOrder(symbol, "buy", contracts * rules.quantityStep, "quote_ccy");
+    if (contracts > rules.maxQuantity) throw new Error(`合约张数超过交易所上限：${contracts} > ${rules.maxQuantity}`);
+    const fill = await this.placeMarketOrder(symbol, "buy", contracts, "base_ccy");
     return { ...fill, executedQuantity: fill.executedQuantity * Math.max(rules.contractValue ?? 1, 1e-12) };
   }
 

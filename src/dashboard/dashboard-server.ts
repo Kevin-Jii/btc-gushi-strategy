@@ -67,6 +67,7 @@ class DashboardRuntime {
   private readonly aiAdvisor: LangChainAdvisor;
   private readonly repository: PostgresRepository | null;
   private strategyPerformance = new Map<string, StrategyPerformance>();
+  private pendingManualReview: { fingerprint: string; reviewedAt: number } | null = null;
 
   public constructor() {
     this.runtime = createPlatformRuntime(process.env, createStrategyConfig());
@@ -196,8 +197,18 @@ class DashboardRuntime {
     await this.trader.reviewLatest();
   }
 
+  public async reviewManualTrade(body: string): Promise<DashboardState> {
+    const parsed = JSON.parse(body) as { strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown };
+    const input = this.parseManualInput(parsed);
+    if (input.interval !== (this.runtime.client.interval ?? this.runtime.interval)) await this.trader.switchInterval(input.interval);
+    const result = await this.trader.reviewManualBuy(input);
+    if (!result || result.source === "error") throw new Error("AI 仓位审核失败，已阻止下单");
+    this.pendingManualReview = { fingerprint: this.manualFingerprint(input), reviewedAt: Date.now() };
+    return this.state();
+  }
+
   public async manualTrade(body: string): Promise<void> {
-    const parsed = JSON.parse(body) as { side?: unknown; strategyId?: unknown; interval?: unknown };
+    const parsed = JSON.parse(body) as { side?: unknown; strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown };
     const side = parsed.side === "BUY" || parsed.side === "SELL" ? parsed.side : null;
     if (!side) throw new Error("交易方向无效");
     if (side === "BUY") {
@@ -205,9 +216,25 @@ class DashboardRuntime {
       const interval = typeof parsed.interval === "string" ? parsed.interval : "";
       if (!["1h", "1d", "1w", "1M", "1y"].includes(interval)) throw new Error("策略不允许该时间周期");
       if (interval !== (this.runtime.client.interval ?? this.runtime.interval)) await this.trader.switchInterval(interval);
-      await this.trader.manualBuy();
+      const input = this.parseManualInput(parsed);
+      const fingerprint = this.manualFingerprint(input);
+      if (!this.pendingManualReview || this.pendingManualReview.fingerprint !== fingerprint || Date.now() - this.pendingManualReview.reviewedAt > 5 * 60 * 1000) throw new Error("请先完成本次参数的 AI 仓位审核，审核有效期为 5 分钟");
+      await this.trader.manualBuy(input);
+      this.pendingManualReview = null;
     } else await this.trader.manualSell();
   }
+
+  private parseManualInput(parsed: { strategyId?: unknown; interval?: unknown; leverage?: unknown; marginAmount?: unknown; contracts?: unknown }): { strategyId?: never; interval: string; leverage: number; marginAmount: number; contracts?: number } {
+    if (parsed.strategyId !== "gushi-ma") throw new Error("买入前必须选择有效策略");
+    const interval = typeof parsed.interval === "string" ? parsed.interval : "";
+    if (!["1h", "1d", "1w", "1M", "1y"].includes(interval)) throw new Error("策略不允许该时间周期");
+    const leverage = Number(parsed.leverage); const marginAmount = Number(parsed.marginAmount); const contracts = parsed.contracts === undefined || parsed.contracts === "" ? undefined : Number(parsed.contracts);
+    if (!Number.isInteger(leverage) || leverage < 1 || leverage > 100) throw new Error("杠杆必须是 1 到 100 的整数");
+    if (!Number.isFinite(marginAmount) || marginAmount <= 0 || (contracts !== undefined && (!Number.isFinite(contracts) || contracts <= 0))) throw new Error("下单数量参数无效");
+    return { interval, leverage, marginAmount, ...(contracts !== undefined ? { contracts } : {}) };
+  }
+
+  private manualFingerprint(input: { interval: string; leverage: number; marginAmount: number; contracts?: number }): string { return JSON.stringify(input); }
 
   public async switchSymbol(body: string): Promise<void> {
     const parsed = JSON.parse(body) as { symbol?: unknown };
@@ -372,6 +399,11 @@ async function main(): Promise<void> {
       if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
       void runtime.reviewLatest().then(() => json(response, 200, runtime.state())).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) }));
       return;
+    }
+    if (url === "/api/trade-review") {
+      if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }
+      let body = ""; request.on("data", (chunk) => { body += chunk; });
+      request.on("end", () => { void runtime.reviewManualTrade(body).then((state) => json(response, 200, state)).catch((error) => json(response, 400, { error: error instanceof Error ? error.message : String(error) })); }); return;
     }
     if (url === "/api/trade") {
       if (request.method !== "POST") { json(response, 405, { error: "POST required" }); return; }

@@ -72,8 +72,11 @@ export interface TradingClient {
   /** 获取账户余额 */
   getBalances(): Promise<AccountBalance[]>;
 
-  /** 市价买入（使用报价货币数量） */
-  marketBuy(symbol: string, quoteOrderQty: number): Promise<OrderFill>;
+  /** 设置永续合约杠杆；现货客户端可以不实现。 */
+  setLeverage?(symbol: string, leverage: number): Promise<void>;
+
+  /** 市价买入；永续合约时 quoteOrderQty 表示保证金金额。 */
+  marketBuy(symbol: string, quoteOrderQty: number, leverage?: number, contracts?: number): Promise<OrderFill>;
 
   /** 市价卖出（使用基础货币数量） */
   marketSell(symbol: string, quantity: number): Promise<OrderFill>;

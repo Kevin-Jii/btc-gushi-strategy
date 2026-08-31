@@ -14,9 +14,24 @@ export interface AiValidation {
   evidence: string[];
   risks: string[];
   invalidation: string;
+  /** AI 对手动下单意图的仓位建议；策略审核不提供时为空。 */
+  positionSizingApproved: boolean;
+  recommendedMargin?: number;
+  recommendedContracts?: number;
+  recommendedLeverage?: number;
   allowEntry: boolean;
   source: "langchain" | "error";
   model: string;
+}
+
+export interface AiTradeIntent {
+  side: "BUY" | "SELL";
+  leverage: number;
+  marginAmount: number;
+  availableBalance: number;
+  latestPrice: number;
+  notionalValue: number;
+  contracts?: number;
 }
 
 export interface AiReviewInput {
@@ -27,4 +42,5 @@ export interface AiReviewInput {
   recentCandles: Candle[];
   evaluation: StrategyEvaluation;
   position: Position | null;
+  tradeIntent?: AiTradeIntent;
 }

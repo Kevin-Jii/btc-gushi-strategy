@@ -15,6 +15,10 @@ const validationSchema = z.object({
   evidence: z.array(z.string().min(1).max(180)).max(6),
   risks: z.array(z.string().min(1).max(180)).max(6),
   invalidation: z.string().min(1).max(220),
+  positionSizingApproved: z.boolean().optional(),
+  recommendedMargin: z.number().positive().optional(),
+  recommendedContracts: z.number().positive().optional(),
+  recommendedLeverage: z.number().int().min(1).max(100).optional(),
 });
 
 type ModelValidation = z.infer<typeof validationSchema>;
@@ -346,6 +350,8 @@ export class LangChainAdvisor {
     
     invalidation：
     只写最关键的失效条件。
+
+    如果用户消息包含手动下单意图，必须额外评估保证金金额、杠杆和合约张数是否与账户可用余额及风险状态相称。此时必须在 JSON 中输出 positionSizingApproved（只能是 true 或 false），并尽量提供 recommendedMargin、recommendedContracts、recommendedLeverage。即使确定性策略没有买入信号，也可以单独判断本次手动仓位是否合理；但 allowEntry 仍必须为 false。AI 只能审核和建议，不能创建订单。
     
     不要输出：
     - Markdown；
@@ -386,6 +392,9 @@ export class LangChainAdvisor {
     
     当前策略持仓：
     {position}
+
+    手动下单意图（如果为空表示策略自动审核）：
+    {tradeIntent}
     
     请严格按照 system 规则进行审核。
     
@@ -448,9 +457,10 @@ export class LangChainAdvisor {
           context: input.evaluation.context,
         }),
         position: JSON.stringify(input.position),
+        tradeIntent: JSON.stringify(input.tradeIntent ?? null),
       });
       const result = this.parseModelResult(rawResult);
-      return this.normalize(result, "langchain");
+      return this.normalize(result, "langchain", Boolean(input.tradeIntent));
     } catch (error) {
       return {
         generatedAt: Date.now(),
@@ -462,6 +472,7 @@ export class LangChainAdvisor {
         evidence: [],
         risks: [error instanceof Error ? error.message : String(error)],
         invalidation: "模型服务恢复并完成下一次审核后重新判断。",
+        positionSizingApproved: false,
         allowEntry: false,
         source: "error",
         model: this.modelName,
@@ -487,13 +498,24 @@ export class LangChainAdvisor {
   private normalize(
     result: ModelValidation,
     source: "langchain" | "error",
+    hasTradeIntent = false,
   ): AiValidation {
     const allowEntry =
       result.recommendation === "BUY" &&
       result.ruleStatus === "PASS" &&
       result.confidence >= this.minConfidence;
     return {
-      ...result,
+      recommendation: result.recommendation,
+      confidence: result.confidence,
+      ruleStatus: result.ruleStatus,
+      summary: result.summary,
+      evidence: result.evidence,
+      risks: result.risks,
+      invalidation: result.invalidation,
+      positionSizingApproved: result.positionSizingApproved ?? !hasTradeIntent,
+      ...(result.recommendedMargin !== undefined ? { recommendedMargin: result.recommendedMargin } : {}),
+      ...(result.recommendedContracts !== undefined ? { recommendedContracts: result.recommendedContracts } : {}),
+      ...(result.recommendedLeverage !== undefined ? { recommendedLeverage: result.recommendedLeverage } : {}),
       generatedAt: Date.now(),
       allowEntry,
       source,
