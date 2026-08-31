@@ -104,12 +104,14 @@ export class LangChainAdvisor {
     });
     // 返回内容仍由下方 Zod schema 校验，避免模型输出越过审计边界。
     // 两条输出路径的 LangChain 泛型不同，统一为 prompt.pipe 可接受的 Runnable 类型。
-    const structuredModel = (isDeepSeek
-      ? model
-      : model.withStructuredOutput(validationSchema, {
-        name: "gushi_strategy_validation",
-        strict: true,
-      })) as any;
+    const structuredModel = (
+      isDeepSeek
+        ? model
+        : model.withStructuredOutput(validationSchema, {
+            name: "gushi_strategy_validation",
+            strict: true,
+          })
+    ) as any;
     const prompt = ChatPromptTemplate.fromMessages([
       [
         "system",
@@ -470,7 +472,13 @@ export class LangChainAdvisor {
   private parseModelResult(raw: unknown): ModelValidation {
     if (typeof raw === "object" && raw !== null && "content" in raw) {
       const content = (raw as { content?: unknown }).content;
-      const text = Array.isArray(content) ? content.map((part) => typeof part === "string" ? part : JSON.stringify(part)).join("") : String(content ?? "");
+      const text = Array.isArray(content)
+        ? content
+            .map((part) =>
+              typeof part === "string" ? part : JSON.stringify(part),
+            )
+            .join("")
+        : String(content ?? "");
       return validationSchema.parse(JSON.parse(text));
     }
     return validationSchema.parse(raw);
