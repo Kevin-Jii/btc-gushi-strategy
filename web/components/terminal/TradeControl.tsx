@@ -3,7 +3,7 @@ import { ArrowDownToLine, ArrowUpFromLine, Brain, Calculator, CheckCircle2, Spar
 import { useState } from "react";
 import type { ReactElement } from "react";
 import type { DashboardState } from "../../../src/dashboard/dashboard-types";
-const options = ["1h", "1d", "1w", "1M", "1y"].map((value) => ({ value, label: value }));
+const options = [{ value: "5m", label: "5 分钟" }, { value: "15m", label: "15 分钟" }, { value: "1h", label: "1 小时" }, { value: "1d", label: "1 天" }, { value: "1w", label: "1 周" }, { value: "1M", label: "1 个月" }, { value: "1y", label: "1 年" }];
 const leverages = [1, 2, 3, 5, 10, 20, 50, 100].map((value) => ({ value: String(value), label: `${value}x` }));
 
 type ReviewResult = DashboardState["ai"];

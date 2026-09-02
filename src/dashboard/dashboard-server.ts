@@ -90,7 +90,8 @@ class DashboardRuntime {
       onUpdate: (status) => this.handleTraderUpdate(status),
       onOrder: (action) => this.handleOrderAction(action),
       getRecentOrders: () => this.orders.slice(0, 20).map((order) => ({ exchangeOrderId: order.exchangeOrderId, side: order.side, quantity: order.quantity, price: order.price, reason: order.reason, timestamp: order.timestamp })),
-      onAiReview: (input, result) => this.repository?.saveAiReview({ strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", interval: this.runtime.client.interval ?? this.runtime.interval, input, result }),
+      autoLeverage: Number(process.env.OKX_AUTO_LEVERAGE ?? 3),
+      onAiReview: (input, result) => { const inferredStrategyId = String(input.evaluation.signal.buy) === "MACD_KDJ_BUY" || String(input.evaluation.signal.sell) === "MACD_KDJ_EXIT" ? "macd-kdj-momentum" : "gushi-ma"; const strategyId = this.trader.getStatus().positionStrategyId ?? inferredStrategyId; return this.repository?.saveAiReview({ strategyId, strategyName: this.trader.strategyNames[strategyId], strategyVersion: "1.0.0", interval: this.runtime.client.interval ?? this.runtime.interval, input, result }); },
     });
   }
 
@@ -213,7 +214,7 @@ class DashboardRuntime {
 
   public configureAutomation(body: string): DashboardState {
     const parsed = JSON.parse(body) as { strategyIds?: unknown; password?: unknown; enabled?: unknown };
-    const strategyIds = Array.isArray(parsed.strategyIds) ? [...new Set(parsed.strategyIds.filter((id): id is string => typeof id === "string"))] : [];
+    const strategyIds = Array.isArray(parsed.strategyIds) ? [...new Set(parsed.strategyIds.filter((id): id is string => id === "gushi-ma" || id === "macd-kdj-momentum"))] : [];
     this.verifyTradePassword(parsed.password);
     if (strategyIds.length === 0) {
       this.enabledStrategyIds.clear();
@@ -221,11 +222,13 @@ class DashboardRuntime {
       this.addActivity({ type: "system", title: "策略自动交易已暂停", detail: "所有策略均已停止接受新入场" });
       return this.state();
     }
-    const supported = new Set(["gushi-ma"]);
+    if (strategyIds.includes("macd-kdj-momentum") && this.runtime.config.instrumentType !== "SWAP") throw new Error("MACD + KDJ 策略必须使用 OKX 永续合约（OKX_INSTRUMENT_TYPE=SWAP）");
+    const supported = new Set(["gushi-ma", "macd-kdj-momentum"]);
     const unsupported = strategyIds.filter((id) => !supported.has(id));
-    if (unsupported.length > 0) throw new Error(`策略暂不支持实盘自动执行：${unsupported.join(", ")}；请先完成该策略的执行器接入`);
+    if (unsupported.length > 0) throw new Error(`未知或不可执行策略：${unsupported.join(", ")}`);
+    if (strategyIds.includes("macd-kdj-momentum") && !["5m", "15m"].includes(this.runtime.client.interval ?? this.runtime.interval)) throw new Error("MACD + KDJ 策略只支持 5m 或 15m，请先切换周期");
     this.enabledStrategyIds = new Set(strategyIds);
-    this.trader.setAutomationEnabled(this.enabledStrategyIds.has("gushi-ma"));
+    this.trader.setAutomationStrategies(strategyIds as Array<"gushi-ma" | "macd-kdj-momentum">);
     this.addActivity({ type: "system", title: "策略自动交易已启动", detail: `${strategyIds.join(", ")} · ${this.trader.symbol} · AI 审核入场，策略条件平仓` });
     return this.state();
   }
@@ -324,15 +327,15 @@ class DashboardRuntime {
   }
 
   private async handleOrderAction(action: import("../live/live-trader.js").LiveTraderAction): Promise<void> {
-    const order: PersistedOrder = { exchangeOrderId: action.exchangeOrderId, strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", strategyVersion: "1.0.0", platform: this.runtime.platform, mode: this.runtime.mode, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, executedAt: action.timestamp, ...(action.entryOrderId ? { entryOrderId: action.entryOrderId } : {}), ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) };
+    const order: PersistedOrder = { exchangeOrderId: action.exchangeOrderId, strategyId: action.strategyId, strategyName: this.trader.strategyNames[action.strategyId], strategyVersion: "1.0.0", platform: this.runtime.platform, mode: this.runtime.mode, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, executedAt: action.timestamp, ...(action.entryOrderId ? { entryOrderId: action.entryOrderId } : {}), ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) };
     await this.repository?.saveOrder(order);
     await this.refreshPerformance();
     if (action.side !== "SELL" || action.realizedProfit === undefined || !action.entryOrderId || !this.aiAdvisor.enabled) return;
     const entry = this.orders.find((item) => item.exchangeOrderId === action.entryOrderId) ?? (this.repository ? await this.findPersistedEntryOrder(action.entryOrderId) : null);
     if (!entry) return;
-    const priorReviews = this.repository ? await this.repository.loadTradeOutcomeReviews(10, "gushi-ma") : [];
-    const review = await this.aiAdvisor.reviewTradeOutcome({ strategyId: "gushi-ma", symbol: this.trader.symbol, interval: order.interval, entry: { orderId: entry.exchangeOrderId, price: entry.price, quantity: entry.quantity, reason: entry.reason, timestamp: entry.timestamp }, exit: { orderId: action.exchangeOrderId, price: action.price, reason: action.reason, timestamp: action.timestamp }, realizedProfit: action.realizedProfit, realizedProfitPercent: action.realizedProfitPercent ?? 0, strategyContext: this.trader.getStatus().latestEvaluation, priorReviews });
-    const persistedReview = { id: 0, strategyId: "gushi-ma", symbol: this.trader.symbol, interval: order.interval, entryOrderId: entry.exchangeOrderId, exitOrderId: action.exchangeOrderId, entryPrice: entry.price, exitPrice: action.price, quantity: action.quantity, realizedProfit: action.realizedProfit, realizedProfitPercent: action.realizedProfitPercent ?? 0, review };
+    const priorReviews = this.repository ? await this.repository.loadTradeOutcomeReviews(10, action.strategyId) : [];
+    const review = await this.aiAdvisor.reviewTradeOutcome({ strategyId: action.strategyId, symbol: this.trader.symbol, interval: order.interval, entry: { orderId: entry.exchangeOrderId, price: entry.price, quantity: entry.quantity, reason: entry.reason, timestamp: entry.timestamp }, exit: { orderId: action.exchangeOrderId, price: action.price, reason: action.reason, timestamp: action.timestamp }, realizedProfit: action.realizedProfit, realizedProfitPercent: action.realizedProfitPercent ?? 0, strategyContext: this.trader.getStatus().latestEvaluation, priorReviews });
+    const persistedReview = { id: 0, strategyId: action.strategyId, symbol: this.trader.symbol, interval: order.interval, entryOrderId: entry.exchangeOrderId, exitOrderId: action.exchangeOrderId, entryPrice: entry.price, exitPrice: action.price, quantity: action.quantity, realizedProfit: action.realizedProfit, realizedProfitPercent: action.realizedProfitPercent ?? 0, review };
     this.outcomeReviews = [persistedReview, ...this.outcomeReviews].slice(0, 20);
     if (this.repository) await this.repository.saveTradeOutcomeReview(persistedReview);
     this.addActivity({ type: "ai", title: `AI 交易复盘 ${review.outcome}`, detail: review.summary });
@@ -342,7 +345,7 @@ class DashboardRuntime {
     const action = status.lastAction;
     if (action && action.timestamp > this.previousActionTimestamp) {
       this.previousActionTimestamp = action.timestamp;
-      this.orders = [{ id: this.activityId + 1, exchangeOrderId: action.exchangeOrderId, strategyId: "gushi-ma", strategyName: "葛氏八法则 · MA 趋势", symbol: this.trader.symbol, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, timestamp: action.timestamp, ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) }, ...this.orders].slice(0, 100);
+      this.orders = [{ id: this.activityId + 1, exchangeOrderId: action.exchangeOrderId, strategyId: action.strategyId, strategyName: this.trader.strategyNames[action.strategyId], symbol: this.trader.symbol, side: action.side, quantity: action.quantity, price: action.price, reason: action.reason, timestamp: action.timestamp, ...(action.realizedProfit !== undefined ? { realizedProfit: action.realizedProfit } : {}), ...(action.realizedProfitPercent !== undefined ? { realizedProfitPercent: action.realizedProfitPercent } : {}) }, ...this.orders].slice(0, 100);
       this.addActivity({
         type: "order",
         side: action.side,
@@ -402,16 +405,18 @@ class DashboardRuntime {
   }
 
   private strategySummaries(status: LiveTraderStatus): StrategyDashboardSummary[] {
-    const evaluation = status.latestEvaluation;
-    const buy = evaluation?.signal.buy ?? null;
-    const sell = evaluation?.signal.sell ?? null;
-    const performance = this.strategyPerformance.get("gushi-ma");
-    const unrealizedProfit = status.position ? ((status.latestCandle?.close ?? status.position.entryPrice) - status.position.entryPrice) * status.position.quantity : 0;
-    const unrealizedPercent = status.position && status.position.entryPrice > 0 ? (unrealizedProfit / (status.position.entryPrice * status.position.quantity)) * 100 : 0;
-    return [
-      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: this.trader.isAutomationEnabled && status.marketConnected ? "running" : "stopped", executionSupported: true, profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell },
-      { id: "macd-kdj-momentum", name: "MACD + KDJ 动量策略", version: "1.0.0", category: "动量", status: "unavailable", executionSupported: false, profit: 0, profitPercent: 0, orderCount: 0, buySignal: null, sellSignal: null },
-    ];
+    const summaries = [
+      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", category: "趋势" },
+      { id: "macd-kdj-momentum", name: "MACD + KDJ 动量策略", category: "动量" },
+    ] as const;
+    return summaries.map((definition) => {
+      const evaluation = status.strategyEvaluations[definition.id];
+      const performance = this.strategyPerformance.get(definition.id);
+      const ownsPosition = status.positionStrategyId === definition.id;
+      const unrealizedProfit = ownsPosition && status.position ? ((status.latestCandle?.close ?? status.position.entryPrice) - status.position.entryPrice) * status.position.quantity : 0;
+      const unrealizedPercent = ownsPosition && status.position && status.position.entryPrice > 0 ? unrealizedProfit / (status.position.entryPrice * status.position.quantity) * 100 : 0;
+      return { id: definition.id, name: definition.name, version: "1.0.0", category: definition.category, status: this.enabledStrategyIds.has(definition.id) && status.marketConnected ? "running" as const : "stopped" as const, executionSupported: true, profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === definition.id).length, buySignal: evaluation?.signal.buy ?? null, sellSignal: evaluation?.signal.sell ?? null };
+    });
   }
 
   private strategyExecutions(status: LiveTraderStatus): import("./dashboard-types.js").StrategyExecution[] {
@@ -423,7 +428,7 @@ class DashboardRuntime {
       const losers = exits.filter((order) => (order.realizedProfit ?? 0) < 0).length;
       const grossProfit = exits.filter((order) => (order.realizedProfit ?? 0) > 0).reduce((sum, order) => sum + (order.realizedProfit ?? 0), 0);
       const grossLoss = Math.abs(exits.filter((order) => (order.realizedProfit ?? 0) < 0).reduce((sum, order) => sum + (order.realizedProfit ?? 0), 0));
-      const position = summary.id === "gushi-ma" ? status.position : null;
+      const position = status.positionStrategyId === summary.id ? status.position : null;
       const unrealizedProfit = position ? ((status.latestCandle?.close ?? position.entryPrice) - position.entryPrice) * position.quantity : 0;
       return { strategyId: summary.id, strategyName: summary.name, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, status: summary.status, executionSupported: summary.executionSupported, startedAt: this.enabledStrategyIds.has(summary.id) ? (this.activity.find((item) => item.title === "策略自动交易已启动")?.at ?? null) : null, lastSignal: summary.buySignal ?? summary.sellSignal, position, realizedProfit, unrealizedProfit, completedTrades: exits.length, winningTrades: winners, losingTrades: losers, winRatePct: exits.length ? winners / exits.length * 100 : 0, profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Number.POSITIVE_INFINITY : 0, lastActionAt: strategyOrders[0]?.timestamp ?? null };
     });

@@ -11,7 +11,7 @@ const asNumber = (value: unknown, fallback = 0): number => {
 };
 
 function intervalToBar(interval: string): string {
-  const known: Record<string, string> = { "1h": "1H", "1d": "1D", "1w": "1W", "1M": "1M", "1y": "1Y" };
+  const known: Record<string, string> = { "5m": "5m", "15m": "15m", "1h": "1H", "1d": "1D", "1w": "1W", "1M": "1M", "1y": "1Y" };
   return known[interval] ?? interval;
 }
 
@@ -190,7 +190,7 @@ export class OkxClient implements TradingClient {
     const sign = createHmac("sha256", this.config.apiSecret).update(`${timestamp}GET/users/self/verify`).digest("base64");
     socket.send(JSON.stringify({ op: "login", args: [{ apiKey: this.config.apiKey, passphrase: this.config.passphrase, timestamp, sign }] }));
     await this.waitForMessage(socket, (message) => message.event === "login" && message.code === "0");
-    socket.send(JSON.stringify({ op: "subscribe", args: [{ channel: "orders", instType: "SPOT" }, { channel: "account" }] }));
+    socket.send(JSON.stringify({ op: "subscribe", args: [{ channel: "orders", instType: this.config.instrumentType }, { channel: "account" }] }));
     const listener = (raw: WebSocket.RawData): void => {
       const message = this.parse(raw);
       const arg = message?.arg as JsonRecord | undefined;

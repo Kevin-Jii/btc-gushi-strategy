@@ -1,15 +1,19 @@
 import type { StrategyConfig } from "../config/strategy.config.js";
-import type { Candle, GushiBuySignal, Position } from "../data/types.js";
+import type { Candle, GushiBuySignal, Position, StrategySignal as DataStrategySignal } from "../data/types.js";
 import { evaluateRiskExit, RiskManager } from "../risk/risk-manager.js";
 import { StrategyEngine } from "../strategy/strategy.js";
 import type { TradingClient } from "../exchange/trading-types.js";
 import { OrderExecutor } from "../exchange/order-executor.js";
 import { logger } from "../utils/logger.js";
 import type { StrategyEvaluation } from "../strategy/strategy.js";
+import { evaluateMacdKdj, shouldBuy as shouldBuyMacdKdj, shouldSell as shouldSellMacdKdj } from "../strategy/macd-kdj/macd-kdj-rules.js";
+import { defaultMacdKdjConfig } from "../strategy/macd-kdj/macd-kdj-config.js";
+import type { MacdKdjSnapshot } from "../strategy/macd-kdj/macd-kdj-types.js";
 import type { AiReviewInput, AiValidation } from "../ai/ai-types.js";
 import { LangChainAdvisor } from "../ai/langchain-advisor.js";
 
 export interface LiveTraderAction {
+  strategyId: "gushi-ma" | "macd-kdj-momentum";
   exchangeOrderId: string;
   side: "BUY" | "SELL";
   quantity: number;
@@ -33,6 +37,9 @@ export interface LiveTraderStatus {
   recentCandles: Candle[];
   aiValidation: AiValidation | null;
   aiHistory: AiValidation[];
+  enabledStrategyIds: Array<"gushi-ma" | "macd-kdj-momentum">;
+  positionStrategyId: "gushi-ma" | "macd-kdj-momentum" | null;
+  strategyEvaluations: Partial<Record<"gushi-ma" | "macd-kdj-momentum", StrategyEvaluation>>;
 }
 
 export interface LiveTraderOptions {
@@ -45,6 +52,8 @@ export interface LiveTraderOptions {
   platform?: string;
   mode?: string;
   adoptExistingPosition?: boolean;
+  /** 自动合约交易使用的杠杆，默认 3 倍。 */
+  autoLeverage?: number;
   onUpdate?: (status: LiveTraderStatus) => void | Promise<void>;
   onOrder?: (action: LiveTraderAction) => void | Promise<void>;
   getRecentOrders?: () => AiReviewInput["recentOrders"];
@@ -74,6 +83,10 @@ export class LiveTrader {
   private manualReviewFingerprint: string | null = null;
   private manualReviewResult: AiValidation | null = null;
   private automationEnabled = false;
+  private readonly enabledStrategyIds = new Set<"gushi-ma" | "macd-kdj-momentum">();
+  private readonly strategyEvaluations: Partial<Record<"gushi-ma" | "macd-kdj-momentum", StrategyEvaluation>> = {};
+  private positionStrategyId: "gushi-ma" | "macd-kdj-momentum" | null = null;
+  private latestMacdKdj: MacdKdjSnapshot | null = null;
 
   public constructor(
     private readonly client: TradingClient,
@@ -88,7 +101,8 @@ export class LiveTrader {
   /** 切换交易对；会重置该交易对的行情和本地策略状态。 */
   public async switchInterval(interval: string, historyLimit = 300): Promise<void> {
     const normalized = interval.trim();
-    if (!/^(1h|1d|1w|1M|1y)$/.test(normalized)) throw new Error("Unsupported chart interval");
+    if (this.enabledStrategyIds.has("macd-kdj-momentum") && !/^(5m|15m)$/.test(normalized)) throw new Error("MACD + KDJ 策略只支持 5m 或 15m 周期");
+    if (!/^(5m|15m|1h|1d|1w|1M|1y)$/.test(normalized)) throw new Error("Unsupported chart interval");
     if (this.stopMarketStream) await this.stopMarketStream();
     this.stopMarketStream = null;
     this.marketConnected = false;
@@ -103,7 +117,7 @@ export class LiveTrader {
 
   public async switchSymbol(symbol: string, historyLimit = 300): Promise<void> {
     const nextSymbol = symbol.trim().toUpperCase();
-    if (!/^[A-Z0-9]+-[A-Z0-9]+$/.test(nextSymbol)) throw new Error("Invalid OKX spot instrument");
+    if (!/^[A-Z0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)?$/.test(nextSymbol)) throw new Error("Invalid OKX instrument");
     if (this.stopMarketStream) await this.stopMarketStream();
     if (this.stopUserStream) await this.stopUserStream();
     this.stopMarketStream = null;
@@ -127,7 +141,15 @@ export class LiveTrader {
 
   public get symbol(): string { return this.currentSymbol; }
   public get isAutomationEnabled(): boolean { return this.automationEnabled; }
-  public setAutomationEnabled(enabled: boolean): void { this.automationEnabled = enabled; this.emitUpdate(); }
+  public get activeStrategyIds(): Array<"gushi-ma" | "macd-kdj-momentum"> { return [...this.enabledStrategyIds]; }
+  public get strategyNames(): Record<"gushi-ma" | "macd-kdj-momentum", string> { return { "gushi-ma": "葛氏八法则 · MA 趋势", "macd-kdj-momentum": "MACD + KDJ 动量策略" }; }
+  public setAutomationStrategies(strategyIds: Array<"gushi-ma" | "macd-kdj-momentum">): void {
+    this.enabledStrategyIds.clear();
+    for (const id of strategyIds) this.enabledStrategyIds.add(id);
+    this.automationEnabled = this.enabledStrategyIds.size > 0;
+    this.emitUpdate();
+  }
+  public setAutomationEnabled(enabled: boolean): void { this.setAutomationStrategies(enabled ? ["gushi-ma"] : []); }
   public get quoteAsset(): string { return this.currentQuoteAsset; }
 
   /** 手动交易入口，供受控 Dashboard 操作使用。 */
@@ -181,7 +203,11 @@ export class LiveTrader {
     }
     for (const candle of history) {
       this.candles.push(candle);
-      this.latestEvaluation = this.strategy.process(candle);
+      const gushi = this.processStrategyCandle("gushi-ma", candle);
+      const macdKdj = this.processStrategyCandle("macd-kdj-momentum", candle);
+      if (gushi) this.strategyEvaluations["gushi-ma"] = gushi;
+      if (macdKdj) this.strategyEvaluations["macd-kdj-momentum"] = macdKdj;
+      this.latestEvaluation = gushi ?? macdKdj;
       this.lastCandleTimestamp = Math.max(this.lastCandleTimestamp, candle.timestamp);
       this.latestCandle = candle;
     }
@@ -212,6 +238,17 @@ export class LiveTrader {
     this.emitUpdate();
   }
 
+  private processStrategyCandle(strategyId: "gushi-ma" | "macd-kdj-momentum", candle: Candle): StrategyEvaluation | null {
+    if (strategyId === "gushi-ma") return this.strategy.process(candle);
+    const snapshot = evaluateMacdKdj([...this.candles], defaultMacdKdjConfig);
+    this.latestMacdKdj = snapshot;
+    if (!snapshot) return null;
+    const buy = shouldBuyMacdKdj(snapshot, defaultMacdKdjConfig);
+    const sell = shouldSellMacdKdj(snapshot);
+    const signal = { buy: buy ? "MACD_KDJ_BUY" : null, sell: sell ? "MACD_KDJ_EXIT" : null, ...(buy ? { buyReason: `MACD/KDJ 共振评分 ${snapshot.score}/10` } : {}), ...(sell ? { sellReason: "MACD 动能衰竭并跌破 EMA20" } : {}) } as unknown as DataStrategySignal;
+    return { context: { currentPrice: candle.close, prevClose: candle.close, prev2Close: candle.close, prevOpen: candle.open, prevLow: candle.low, prevHigh: candle.high, ma20: snapshot.ema20, ma60: snapshot.ema20, ma120: snapshot.ema20, prevMA60: snapshot.ema20, ma60_3: snapshot.ema20, ma60_4: snapshot.ema20, ma60_5: snapshot.ema20, ma60_6: snapshot.ema20, prevBias60: 0, bias60: 0, volumeConfirm: snapshot.volumeConfirmed, resistance: candle.high, support: candle.low }, signal, trendFilter: snapshot.hardConditions.emaTrend, entrySignal: buy };
+  }
+
   /** 处理一根已收盘 K 线；未收盘更新不会进入策略。 */
   public async onClosedCandle(candle: Candle): Promise<void> {
     // OKX 推送的是同一根 K 线的增量；未收盘更新只刷新价格和图表，不触发策略或下单。
@@ -227,43 +264,33 @@ export class LiveTrader {
     this.lastCandleTimestamp = candle.timestamp;
     this.candles.push(candle);
     if (!candle.isClosed) { this.latestCandle = candle; this.emitUpdate(); return; }
-    const evaluation = this.strategy.process(candle);
+    const gushi = this.processStrategyCandle("gushi-ma", candle);
+    const macdKdj = this.processStrategyCandle("macd-kdj-momentum", candle);
+    if (gushi) this.strategyEvaluations["gushi-ma"] = gushi;
+    if (macdKdj) this.strategyEvaluations["macd-kdj-momentum"] = macdKdj;
+    const entryStrategyId = this.activeStrategyIds.find((id) => this.strategyEvaluations[id]?.entrySignal && this.strategyEvaluations[id]?.signal.buy !== null);
+    const entryEvaluation = entryStrategyId ? this.strategyEvaluations[entryStrategyId] : null;
+    const exitEvaluation = this.positionStrategyId ? this.strategyEvaluations[this.positionStrategyId] : null;
     this.latestCandle = candle;
-    this.latestEvaluation = evaluation;
+    this.latestEvaluation = exitEvaluation ?? entryEvaluation ?? gushi ?? macdKdj;
     this.emitUpdate();
-    if (!evaluation) return;
-
-    const wantsEntry = this.automationEnabled && !this.position
-      && evaluation.entrySignal
-      && evaluation.signal.buy !== null
-      && this.riskManager.canEnter(this.candles.length - 1, this.options.config.cooldownBars);
-    const vetoEntry = wantsEntry && this.options.aiAdvisor?.isVetoMode() === true;
-    // 审核调用与确定性策略并行；veto 模式下只有入场信号需要等待审核结果。
-    const reviewPromise = this.runAiReview(candle, evaluation, vetoEntry);
 
     if (this.position) {
       this.position.peakPrice = Math.max(this.position.peakPrice, candle.high);
-      const riskExit = evaluateRiskExit(candle, this.position, this.options.config);
-      if (riskExit) {
-        await this.closePosition(riskExit.reason);
-        return;
-      }
-      if (evaluation.signal.sell) {
-        await this.closePosition(evaluation.signal.sell);
-        return;
-      }
+      const riskExit = this.evaluatePositionRisk(candle);
+      if (riskExit) { await this.closePosition(riskExit); return; }
+      if (exitEvaluation?.signal.sell) { await this.closePosition(exitEvaluation.signal.sell); return; }
     }
 
-    if (wantsEntry && evaluation.signal.buy) {
-      const review = await reviewPromise;
-      if (this.options.aiAdvisor?.enabled && !review?.allowEntry) {
-        logger.info("AI 未放行本次确定性策略入场");
-        return;
-      }
-      await this.openPosition(candle.close, evaluation.signal.buy);
-    } else {
-      void reviewPromise;
+    const wantsEntry = this.automationEnabled && !this.position && entryStrategyId !== undefined && entryEvaluation !== null
+      && this.riskManager.canEnter(this.candles.length - 1, this.options.config.cooldownBars);
+    if (!wantsEntry || !entryStrategyId || !entryEvaluation?.signal.buy) return;
+    const review = await this.runAiReview(candle, entryEvaluation, true);
+    if (this.options.aiAdvisor?.enabled && !review?.allowEntry) {
+      logger.info(`AI 未放行 ${entryStrategyId} 本次策略入场`);
+      return;
     }
+    await this.openPosition(candle.close, entryEvaluation.signal.buy, undefined, this.options.autoLeverage ?? 3, undefined, entryStrategyId);
   }
 
   /** 将必要的行情、策略和非敏感持仓摘要交给 LangChain，不传递任何 API 凭证。 */
@@ -296,7 +323,7 @@ export class LiveTrader {
     return result;
   }
 
-  private async openPosition(price: number, reason: string, manualMarginAmount?: number, leverage?: number, contracts?: number): Promise<void> {
+  private async openPosition(price: number, reason: string, manualMarginAmount?: number, leverage?: number, contracts?: number, strategyId: "gushi-ma" | "macd-kdj-momentum" = "gushi-ma"): Promise<void> {
     const balances = await this.client.getBalances();
     const quote = balances.find((balance) => balance.asset === this.currentQuoteAsset);
     const quoteAmount = manualMarginAmount !== undefined ? manualMarginAmount * (leverage ?? 1) : (quote?.free ?? 0) * this.options.positionFraction;
@@ -305,11 +332,27 @@ export class LiveTrader {
     const fill = await this.executor.buyWithQuote(quoteAmount, leverage, contracts);
     if (fill.executedQuantity <= 0 || fill.averagePrice <= 0) throw new Error("交易所买单没有成交");
     this.position = { side: "long", entryPrice: fill.averagePrice || price, quantity: fill.executedQuantity, entryTimestamp: fill.transactTime, entryBarIndex: this.candles.length - 1, peakPrice: fill.averagePrice || price };
+    this.positionStrategyId = strategyId;
     this.entryOrderId = fill.orderId;
-    this.lastAction = { exchangeOrderId: fill.orderId, side: "BUY", quantity: fill.executedQuantity, price: fill.averagePrice || price, reason, timestamp: fill.transactTime };
+    this.lastAction = { strategyId, exchangeOrderId: fill.orderId, side: "BUY", quantity: fill.executedQuantity, price: fill.averagePrice || price, reason, timestamp: fill.transactTime };
     await this.persistSafely("买入订单", () => this.options.onOrder?.(this.lastAction as LiveTraderAction));
     logger.info(`BUY ${this.currentSymbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
     this.emitUpdate();
+  }
+
+  private evaluatePositionRisk(candle: Candle): string | null {
+    if (!this.position) return null;
+    if (this.positionStrategyId === "macd-kdj-momentum" && this.latestMacdKdj) {
+      const snapshot = this.latestMacdKdj;
+      const hardStop = this.position.entryPrice - snapshot.atr * defaultMacdKdjConfig.atrStopMultiplier;
+      const activated = this.position.peakPrice >= this.position.entryPrice * (1 + this.options.config.trailingActivationProfit);
+      const trailingStop = this.position.peakPrice - snapshot.atr * defaultMacdKdjConfig.atrTrailingMultiplier;
+      if (candle.low <= hardStop) return "MACD-KDJ ATR 固定止损";
+      if (activated && candle.low <= trailingStop) return "MACD-KDJ ATR 移动止损";
+      return null;
+    }
+    const riskExit = evaluateRiskExit(candle, this.position, this.options.config);
+    return riskExit?.reason ?? null;
   }
 
   private async closePosition(reason: string): Promise<void> {
@@ -321,7 +364,8 @@ export class LiveTrader {
       const realizedProfitPercent = position.entryPrice > 0 ? ((fill.averagePrice - position.entryPrice) / position.entryPrice) * 100 : 0;
       this.position = null;
       this.riskManager.registerExit(this.candles.length - 1);
-      this.lastAction = { exchangeOrderId: fill.orderId, side: "SELL", quantity: fill.executedQuantity, price: fill.averagePrice, reason, timestamp: fill.transactTime, ...(this.entryOrderId ? { entryOrderId: this.entryOrderId } : {}), realizedProfit, realizedProfitPercent };
+      this.lastAction = { strategyId: this.positionStrategyId ?? "gushi-ma", exchangeOrderId: fill.orderId, side: "SELL", quantity: fill.executedQuantity, price: fill.averagePrice, reason, timestamp: fill.transactTime, ...(this.entryOrderId ? { entryOrderId: this.entryOrderId } : {}), realizedProfit, realizedProfitPercent };
+      this.positionStrategyId = null;
       this.entryOrderId = null;
       await this.persistSafely("卖出订单", () => this.options.onOrder?.(this.lastAction as LiveTraderAction));
       logger.info(`SELL ${this.currentSymbol} ${fill.executedQuantity} at ${fill.averagePrice} (${reason})`);
@@ -378,6 +422,9 @@ export class LiveTrader {
         risks: [...this.aiValidation.risks],
       } : null,
       aiHistory: this.aiHistory.map((item) => ({ ...item, evidence: [...item.evidence], risks: [...item.risks] })),
+      enabledStrategyIds: this.activeStrategyIds,
+      positionStrategyId: this.positionStrategyId,
+      strategyEvaluations: { ...this.strategyEvaluations },
     };
   }
 
