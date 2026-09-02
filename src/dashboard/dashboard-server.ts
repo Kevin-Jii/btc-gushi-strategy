@@ -72,6 +72,7 @@ class DashboardRuntime {
   private strategyPerformance = new Map<string, StrategyPerformance>();
   private outcomeReviews: Array<import("../persistence/persistence-types.js").PersistedTradeOutcomeReview> = [];
   private pendingManualReview: { fingerprint: string; reviewedAt: number } | null = null;
+  private enabledStrategyIds = new Set<string>();
 
   public constructor() {
     this.runtime = createPlatformRuntime(process.env, createStrategyConfig());
@@ -173,7 +174,8 @@ class DashboardRuntime {
       activity: this.activity,
       strategies: this.strategySummaries(status),
       orders: this.orders,
-      automation: { enabled: this.trader.isAutomationEnabled, strategyId: "gushi-ma", label: "葛氏八法则 · MA 趋势" },
+      automation: { enabled: this.enabledStrategyIds.size > 0, strategyIds: [...this.enabledStrategyIds] },
+      executions: this.strategyExecutions(status),
     };
   }
 
@@ -209,9 +211,22 @@ class DashboardRuntime {
     await this.trader.reviewLatest();
   }
 
-  public toggleAutomation(): DashboardState {
-    this.trader.setAutomationEnabled(!this.trader.isAutomationEnabled);
-    this.addActivity({ type: "system", title: this.trader.isAutomationEnabled ? "策略自动交易已启动" : "策略自动交易已暂停", detail: `${this.trader.symbol} · ${this.runtime.client.interval ?? this.runtime.interval} · AI 审核入场，策略条件平仓` });
+  public configureAutomation(body: string): DashboardState {
+    const parsed = JSON.parse(body) as { strategyIds?: unknown; password?: unknown; enabled?: unknown };
+    const strategyIds = Array.isArray(parsed.strategyIds) ? [...new Set(parsed.strategyIds.filter((id): id is string => typeof id === "string"))] : [];
+    this.verifyTradePassword(parsed.password);
+    if (strategyIds.length === 0) {
+      this.enabledStrategyIds.clear();
+      this.trader.setAutomationEnabled(false);
+      this.addActivity({ type: "system", title: "策略自动交易已暂停", detail: "所有策略均已停止接受新入场" });
+      return this.state();
+    }
+    const supported = new Set(["gushi-ma"]);
+    const unsupported = strategyIds.filter((id) => !supported.has(id));
+    if (unsupported.length > 0) throw new Error(`策略暂不支持实盘自动执行：${unsupported.join(", ")}；请先完成该策略的执行器接入`);
+    this.enabledStrategyIds = new Set(strategyIds);
+    this.trader.setAutomationEnabled(this.enabledStrategyIds.has("gushi-ma"));
+    this.addActivity({ type: "system", title: "策略自动交易已启动", detail: `${strategyIds.join(", ")} · ${this.trader.symbol} · AI 审核入场，策略条件平仓` });
     return this.state();
   }
 
@@ -394,9 +409,24 @@ class DashboardRuntime {
     const unrealizedProfit = status.position ? ((status.latestCandle?.close ?? status.position.entryPrice) - status.position.entryPrice) * status.position.quantity : 0;
     const unrealizedPercent = status.position && status.position.entryPrice > 0 ? (unrealizedProfit / (status.position.entryPrice * status.position.quantity)) * 100 : 0;
     return [
-      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: this.trader.isAutomationEnabled && status.marketConnected ? "running" : this.trader.isAutomationEnabled ? "paused" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell },
-      { id: "macd-kdj-momentum", name: "MACD + KDJ 动量策略", version: "1.0.0", category: "动量", status: "stopped", profit: 0, profitPercent: 0, orderCount: 0, buySignal: null, sellSignal: null },
+      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: this.trader.isAutomationEnabled && status.marketConnected ? "running" : "stopped", executionSupported: true, profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell },
+      { id: "macd-kdj-momentum", name: "MACD + KDJ 动量策略", version: "1.0.0", category: "动量", status: "unavailable", executionSupported: false, profit: 0, profitPercent: 0, orderCount: 0, buySignal: null, sellSignal: null },
     ];
+  }
+
+  private strategyExecutions(status: LiveTraderStatus): import("./dashboard-types.js").StrategyExecution[] {
+    return this.strategySummaries(status).map((summary) => {
+      const strategyOrders = this.orders.filter((order) => order.strategyId === summary.id);
+      const exits = strategyOrders.filter((order) => order.side === "SELL" && order.realizedProfit !== undefined);
+      const realizedProfit = exits.reduce((sum, order) => sum + (order.realizedProfit ?? 0), 0);
+      const winners = exits.filter((order) => (order.realizedProfit ?? 0) > 0).length;
+      const losers = exits.filter((order) => (order.realizedProfit ?? 0) < 0).length;
+      const grossProfit = exits.filter((order) => (order.realizedProfit ?? 0) > 0).reduce((sum, order) => sum + (order.realizedProfit ?? 0), 0);
+      const grossLoss = Math.abs(exits.filter((order) => (order.realizedProfit ?? 0) < 0).reduce((sum, order) => sum + (order.realizedProfit ?? 0), 0));
+      const position = summary.id === "gushi-ma" ? status.position : null;
+      const unrealizedProfit = position ? ((status.latestCandle?.close ?? position.entryPrice) - position.entryPrice) * position.quantity : 0;
+      return { strategyId: summary.id, strategyName: summary.name, symbol: this.trader.symbol, interval: this.runtime.client.interval ?? this.runtime.interval, status: summary.status, executionSupported: summary.executionSupported, startedAt: this.enabledStrategyIds.has(summary.id) ? (this.activity.find((item) => item.title === "策略自动交易已启动")?.at ?? null) : null, lastSignal: summary.buySignal ?? summary.sellSignal, position, realizedProfit, unrealizedProfit, completedTrades: exits.length, winningTrades: winners, losingTrades: losers, winRatePct: exits.length ? winners / exits.length * 100 : 0, profitFactor: grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? Number.POSITIVE_INFINITY : 0, lastActionAt: strategyOrders[0]?.timestamp ?? null };
+    });
   }
 
   private async persistMonitorSnapshot(): Promise<void> {
@@ -475,7 +505,7 @@ async function main(): Promise<void> {
     "/api/interval": { method: "POST", handler: async (request, response) => { await runtime.switchInterval(await readBody(request)); json(response, 200, runtime.state()); } },
     "/api/ai-chat": { method: "POST", handler: async (request, response) => { json(response, 200, await runtime.chatWithAi(await readBody(request))); } },
     "/api/ai-review": { method: "POST", handler: async (_request, response) => { await runtime.reviewLatest(); json(response, 200, runtime.state()); } },
-    "/api/automation": { method: "POST", handler: async (_request, response) => { json(response, 200, runtime.toggleAutomation()); } },
+    "/api/automation": { method: "POST", handler: async (request, response) => { json(response, 200, runtime.configureAutomation(await readBody(request))); } },
     "/api/backtest": { method: "POST", errorStatus: 400, handler: async (request, response) => { json(response, 200, await runtime.backtest(await readBody(request))); } },
     "/api/trade-review": { method: "POST", handler: async (request, response) => { json(response, 200, await runtime.reviewManualTrade(await readBody(request))); } },
     "/api/trade": { method: "POST", handler: async (request, response) => { await runtime.manualTrade(await readBody(request)); json(response, 200, runtime.state()); } },

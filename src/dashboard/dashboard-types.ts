@@ -8,12 +8,33 @@ export interface StrategyDashboardSummary {
   name: string;
   version: string;
   category: string;
-  status: "running" | "paused" | "stopped";
+  status: "running" | "paused" | "stopped" | "unavailable";
   profit: number;
   profitPercent: number;
   orderCount: number;
   buySignal: string | null;
   sellSignal: string | null;
+  executionSupported: boolean;
+}
+
+export interface StrategyExecution {
+  strategyId: string;
+  strategyName: string;
+  symbol: string;
+  interval: string;
+  status: "running" | "paused" | "stopped" | "unavailable";
+  executionSupported: boolean;
+  startedAt: number | null;
+  lastSignal: string | null;
+  position: Position | null;
+  realizedProfit: number;
+  unrealizedProfit: number;
+  completedTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  winRatePct: number;
+  profitFactor: number;
+  lastActionAt: number | null;
 }
 
 export interface DashboardOrder {
@@ -93,7 +114,7 @@ export interface DashboardState {
   orders: DashboardOrder[];
   automation: {
     enabled: boolean;
-    strategyId: string;
-    label: string;
+    strategyIds: string[];
   };
+  executions: StrategyExecution[];
 }
