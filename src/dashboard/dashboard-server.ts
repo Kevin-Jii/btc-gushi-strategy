@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { createStrategyConfig } from "../config/strategy.config.js";
+import { loadCandlesFromCsvContent } from "../data/market-data.js";
+import { runBacktest } from "../backtest/backtest-engine.js";
 import type { AccountBalance } from "../exchange/trading-types.js";
 import { LiveTrader } from "../live/live-trader.js";
 import type { LiveTraderAction, LiveTraderStatus } from "../live/live-trader.js";
@@ -171,6 +173,7 @@ class DashboardRuntime {
       activity: this.activity,
       strategies: this.strategySummaries(status),
       orders: this.orders,
+      automation: { enabled: this.trader.isAutomationEnabled, strategyId: "gushi-ma", label: "葛氏八法则 · MA 趋势" },
     };
   }
 
@@ -204,6 +207,25 @@ class DashboardRuntime {
 
   public async reviewLatest(): Promise<void> {
     await this.trader.reviewLatest();
+  }
+
+  public toggleAutomation(): DashboardState {
+    this.trader.setAutomationEnabled(!this.trader.isAutomationEnabled);
+    this.addActivity({ type: "system", title: this.trader.isAutomationEnabled ? "策略自动交易已启动" : "策略自动交易已暂停", detail: `${this.trader.symbol} · ${this.runtime.client.interval ?? this.runtime.interval} · AI 审核入场，策略条件平仓` });
+    return this.state();
+  }
+
+  public async backtest(body: string): Promise<unknown> {
+    const parsed = JSON.parse(body) as { csv?: unknown; initialCapital?: unknown; feeRate?: unknown; positionFraction?: unknown };
+    if (typeof parsed.csv !== "string" || parsed.csv.trim().length === 0) throw new Error("请上传包含 timestamp, open, high, low, close, volume 的 CSV 历史数据");
+    const candles = loadCandlesFromCsvContent(parsed.csv);
+    if (candles.length < 130) throw new Error("历史数据至少需要 130 根 K 线，才能计算 MA120");
+    const result = runBacktest(candles, {
+      ...(parsed.initialCapital !== undefined ? { initialCapital: Number(parsed.initialCapital) } : {}),
+      ...(parsed.feeRate !== undefined ? { feeRate: Number(parsed.feeRate) } : {}),
+      ...(parsed.positionFraction !== undefined ? { positionFraction: Number(parsed.positionFraction) } : {}),
+    });
+    return { performance: result.performance, signals: result.signals, trades: result.trades.slice(-100), equity: result.equity };
   }
 
   public async chatWithAi(body: string): Promise<{ answer: string }> {
@@ -372,7 +394,7 @@ class DashboardRuntime {
     const unrealizedProfit = status.position ? ((status.latestCandle?.close ?? status.position.entryPrice) - status.position.entryPrice) * status.position.quantity : 0;
     const unrealizedPercent = status.position && status.position.entryPrice > 0 ? (unrealizedProfit / (status.position.entryPrice * status.position.quantity)) * 100 : 0;
     return [
-      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: status.marketConnected ? "running" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell },
+      { id: "gushi-ma", name: "葛氏八法则 · MA 趋势", version: "1.0.0", category: "趋势", status: this.trader.isAutomationEnabled && status.marketConnected ? "running" : this.trader.isAutomationEnabled ? "paused" : "stopped", profit: (performance?.realizedProfit ?? 0) + unrealizedProfit, profitPercent: (performance?.realizedProfitPercent ?? 0) + unrealizedPercent, orderCount: this.orders.filter((order) => order.strategyId === "gushi-ma").length, buySignal: buy, sellSignal: sell },
       { id: "macd-kdj-momentum", name: "MACD + KDJ 动量策略", version: "1.0.0", category: "动量", status: "stopped", profit: 0, profitPercent: 0, orderCount: 0, buySignal: null, sellSignal: null },
     ];
   }
@@ -453,6 +475,8 @@ async function main(): Promise<void> {
     "/api/interval": { method: "POST", handler: async (request, response) => { await runtime.switchInterval(await readBody(request)); json(response, 200, runtime.state()); } },
     "/api/ai-chat": { method: "POST", handler: async (request, response) => { json(response, 200, await runtime.chatWithAi(await readBody(request))); } },
     "/api/ai-review": { method: "POST", handler: async (_request, response) => { await runtime.reviewLatest(); json(response, 200, runtime.state()); } },
+    "/api/automation": { method: "POST", handler: async (_request, response) => { json(response, 200, runtime.toggleAutomation()); } },
+    "/api/backtest": { method: "POST", errorStatus: 400, handler: async (request, response) => { json(response, 200, await runtime.backtest(await readBody(request))); } },
     "/api/trade-review": { method: "POST", handler: async (request, response) => { json(response, 200, await runtime.reviewManualTrade(await readBody(request))); } },
     "/api/trade": { method: "POST", handler: async (request, response) => { await runtime.manualTrade(await readBody(request)); json(response, 200, runtime.state()); } },
     "/api/symbol": { method: "POST", handler: async (request, response) => { await runtime.switchSymbol(await readBody(request)); json(response, 200, runtime.state()); } },

@@ -10,7 +10,10 @@ import type { Candle, IndicatorData } from "./types.js";
 
 /** 读取约定格式的 BTC/USDT CSV，并校验每个数值字段。 */
 export function loadCandlesFromCsv(filePath: string): Candle[] {
-  const content = fs.readFileSync(filePath, "utf8");
+  return loadCandlesFromCsvContent(fs.readFileSync(filePath, "utf8"));
+}
+
+export function loadCandlesFromCsvContent(content: string): Candle[] {
   const rows = parse(content, {
     bom: true,
     columns: true,

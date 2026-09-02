@@ -91,4 +91,9 @@ export interface DashboardState {
   activity: DashboardActivity[];
   strategies: StrategyDashboardSummary[];
   orders: DashboardOrder[];
+  automation: {
+    enabled: boolean;
+    strategyId: string;
+    label: string;
+  };
 }

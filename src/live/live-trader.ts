@@ -73,6 +73,7 @@ export class LiveTrader {
   private entryOrderId: string | null = null;
   private manualReviewFingerprint: string | null = null;
   private manualReviewResult: AiValidation | null = null;
+  private automationEnabled = false;
 
   public constructor(
     private readonly client: TradingClient,
@@ -125,6 +126,8 @@ export class LiveTrader {
   }
 
   public get symbol(): string { return this.currentSymbol; }
+  public get isAutomationEnabled(): boolean { return this.automationEnabled; }
+  public setAutomationEnabled(enabled: boolean): void { this.automationEnabled = enabled; this.emitUpdate(); }
   public get quoteAsset(): string { return this.currentQuoteAsset; }
 
   /** 手动交易入口，供受控 Dashboard 操作使用。 */
@@ -230,7 +233,7 @@ export class LiveTrader {
     this.emitUpdate();
     if (!evaluation) return;
 
-    const wantsEntry = !this.position
+    const wantsEntry = this.automationEnabled && !this.position
       && evaluation.entrySignal
       && evaluation.signal.buy !== null
       && this.riskManager.canEnter(this.candles.length - 1, this.options.config.cooldownBars);
@@ -252,14 +255,10 @@ export class LiveTrader {
     }
 
     if (wantsEntry && evaluation.signal.buy) {
-      if (vetoEntry) {
-        const review = await reviewPromise;
-        if (!review?.allowEntry) {
-          logger.info("LangChain veto 已阻止本次确定性策略入场");
-          return;
-        }
-      } else {
-        void reviewPromise;
+      const review = await reviewPromise;
+      if (this.options.aiAdvisor?.enabled && !review?.allowEntry) {
+        logger.info("AI 未放行本次确定性策略入场");
+        return;
       }
       await this.openPosition(candle.close, evaluation.signal.buy);
     } else {
