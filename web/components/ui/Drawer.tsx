@@ -8,9 +8,10 @@ interface DrawerProps {
   title: string;
   children: ReactNode;
   width?: string;
+  position?: "left" | "right";
 }
 
-export function Drawer({ open, onClose, title, children, width = "600px" }: DrawerProps): ReactElement | null {
+export function Drawer({ open, onClose, title, children, width = "600px", position = "right" }: DrawerProps): ReactElement | null {
   useEffect(() => {
     if (open) {
       document.body.style.overflow = "hidden";
@@ -34,7 +35,9 @@ export function Drawer({ open, onClose, title, children, width = "600px" }: Draw
 
       {/* Drawer */}
       <div
-        className="fixed right-0 top-0 z-50 h-full overflow-auto border-l border-slate-800/50 bg-slate-900 shadow-2xl"
+        className={`fixed top-0 z-50 h-full overflow-auto border-slate-800/50 bg-slate-900 shadow-2xl ${
+          position === "right" ? "right-0 border-l" : "left-0 border-r"
+        }`}
         style={{ width, maxWidth: "90vw" }}
       >
         {/* Header */}

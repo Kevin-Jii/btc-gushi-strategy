@@ -1,18 +1,13 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense } from "react";
 import type { ReactElement } from "react";
 import type { DashboardState } from "../../../src/dashboard/dashboard-types";
-import { ActivityTimeline } from "./ActivityTimeline";
 import { MarketWorkspace } from "./MarketWorkspace";
 import { PerformanceStrip } from "./PerformanceStrip";
 import { PositionSummary } from "./PositionSummary";
-import { StrategyStatusPanel } from "./StrategyStatusPanel";
 import { TerminalHeader } from "./TerminalHeader";
 import { PromptBar } from "./PromptBar";
-import { Drawer } from "../ui/Drawer";
 
-const AutomationControl = lazy(() => import("./AutomationControl").then((module) => ({ default: module.AutomationControl })));
 const TradeControl = lazy(() => import("./TradeControl").then((module) => ({ default: module.TradeControl })));
-const AiAnalysisPanel = lazy(() => import("./AiAnalysisPanel").then((module) => ({ default: module.AiAnalysisPanel })));
 const ExecutionList = lazy(() => import("./ExecutionList").then((module) => ({ default: module.ExecutionList })));
 const BacktestPanel = lazy(() => import("./BacktestPanel").then((module) => ({ default: module.BacktestPanel })));
 
@@ -21,39 +16,21 @@ function PanelFallback(): ReactElement {
 }
 
 export function TerminalDashboard({ state, onIntervalChange, onSymbolChange, promptMessage, onPromptMessageChange }: { state: DashboardState; onIntervalChange: (interval: string) => void; onSymbolChange: (symbol: string) => void; promptMessage: string; onPromptMessageChange: (message: string) => void }): ReactElement {
-  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
       <TerminalHeader state={state} onSymbolChange={onSymbolChange} />
       <main className="mx-auto max-w-[1920px] space-y-3 p-3 pb-20">
         <PerformanceStrip state={state} />
 
-        <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,2.15fr)_minmax(320px,.85fr)]">
+        <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,2fr)_minmax(360px,1fr)]">
           <MarketWorkspace state={state} onIntervalChange={onIntervalChange} />
           <aside className="grid content-start gap-3">
             <Suspense fallback={<PanelFallback />}>
-              <AutomationControl state={state} />
-            </Suspense>
-            <Suspense fallback={<PanelFallback />}>
               <TradeControl state={state} />
             </Suspense>
-            <StrategyStatusPanel state={state} />
+            <PositionSummary state={state} />
           </aside>
         </div>
-
-        <div className="grid min-w-0 gap-3 xl:grid-cols-2">
-          <PositionSummary state={state} />
-          <ActivityTimeline state={state} />
-        </div>
-
-        {/* AI 分析按钮 */}
-        <button
-          onClick={() => setAiDrawerOpen(true)}
-          className="w-full rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-400 transition-all hover:border-cyan-500/50 hover:bg-cyan-500/20"
-        >
-          查看 AI 行情与策略分析
-        </button>
 
         <Suspense fallback={<PanelFallback />}>
           <ExecutionList state={state} />
@@ -78,13 +55,6 @@ export function TerminalDashboard({ state, onIntervalChange, onSymbolChange, pro
           </span>
         </footer>
       </main>
-
-      {/* AI 分析 Drawer */}
-      <Drawer open={aiDrawerOpen} onClose={() => setAiDrawerOpen(false)} title="AI 行情与策略分析" width="800px">
-        <Suspense fallback={<PanelFallback />}>
-          <AiAnalysisPanel state={state} />
-        </Suspense>
-      </Drawer>
 
       <PromptBar state={state} message={promptMessage} onMessageChange={onPromptMessageChange} />
     </div>
