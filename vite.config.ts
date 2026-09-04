@@ -24,5 +24,27 @@ export default defineConfig({
   build: {
     outDir: "web/dist",
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1000, // 提高警告阈值到 1000 KB
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          // 将大型依赖分离到独立 chunk
+          if (id.includes("node_modules")) {
+            if (id.includes("react") || id.includes("react-dom")) {
+              return "react-vendor";
+            }
+            if (id.includes("@douyinfe/semi-ui")) {
+              return "semi-ui";
+            }
+            if (id.includes("lightweight-charts")) {
+              return "chart";
+            }
+            if (id.includes("lottie-web")) {
+              return "lottie";
+            }
+          }
+        },
+      },
+    },
   },
 });
