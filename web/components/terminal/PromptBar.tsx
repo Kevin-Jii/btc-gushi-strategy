@@ -23,44 +23,44 @@ export function PromptBar({ state, message, onMessageChange }: { state: Dashboar
   };
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-40 mx-auto max-w-3xl">
-      <div className="rounded-xl border border-cyan-500/30 bg-slate-900/95 p-3 shadow-2xl backdrop-blur-xl">
-        <div className="flex items-center gap-2.5 px-2 text-xs text-cyan-400">
-          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-cyan-500/10">
-            <Sparkles size={14} />
+    <div className="fixed inset-x-3 bottom-3 z-40 mx-auto max-w-3xl">
+      <div className="rounded-lg border border-cyan-500/30 bg-slate-900/95 p-2.5 shadow-2xl backdrop-blur-xl">
+        <div className="flex items-center gap-2 px-2 text-[10px] text-cyan-400">
+          <div className="flex h-5 w-5 items-center justify-center rounded bg-cyan-500/10">
+            <Sparkles size={12} />
           </div>
-          <span className="font-medium">实时订单监控 AI</span>
+          <span className="font-medium">AI 监控</span>
           <span className="text-slate-500">·</span>
-          <span className="text-slate-400">{state.orders.length} 条订单</span>
+          <span className="text-slate-400">{state.orders.length} 订单</span>
           <span className="text-slate-500">·</span>
           <span className={state.position ? "text-emerald-400" : "text-slate-400"}>
-            {state.position ? "当前有持仓" : "当前空仓"}
+            {state.position ? "持仓" : "空仓"}
           </span>
         </div>
 
         {answer && (
-          <div className="mt-3 rounded-lg border border-slate-700/50 bg-slate-800/30 px-3 py-2.5 text-sm leading-relaxed text-slate-200">
+          <div className="mt-2 rounded border border-slate-700/50 bg-slate-800/30 px-2.5 py-2 text-xs leading-relaxed text-slate-200">
             {answer}
           </div>
         )}
 
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-2 flex items-center gap-1.5">
           <input
-            className="h-10 min-w-0 flex-1 rounded-lg bg-slate-800/50 px-4 text-sm text-slate-100 placeholder-slate-500 outline-none transition-all focus:bg-slate-800/80 focus:ring-2 focus:ring-cyan-500/20"
+            className="h-8 min-w-0 flex-1 rounded bg-slate-800/50 px-3 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all focus:bg-slate-800/80"
             value={message}
             onChange={(event) => onMessageChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") void submit();
             }}
-            placeholder="询问实时订单、持仓、收益或风控状态…"
+            placeholder="询问订单、持仓、收益或风控状态…"
           />
           <button
-            className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-400 transition-all hover:bg-cyan-500/25 active:scale-95 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded bg-cyan-500/15 text-cyan-400 transition-all hover:bg-cyan-500/25 active:scale-95 disabled:opacity-40"
             disabled={loading || !state.ai.enabled || !message.trim()}
             onClick={() => void submit()}
-            title="发送给 AI"
+            title="发送"
           >
-            {loading ? <LoaderCircle size={18} className="animate-spin" /> : <Send size={18} />}
+            {loading ? <LoaderCircle size={14} className="animate-spin" /> : <Send size={14} />}
           </button>
         </div>
       </div>
