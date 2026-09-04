@@ -10,6 +10,20 @@ export interface AccountBalance {
   locked: number;
 }
 
+/** 交易所当前未平仓位，数量统一为标的等价值数量。 */
+export interface ExchangePosition {
+  symbol: string;
+  side: "long" | "short";
+  quantity: number;
+  entryPrice: number;
+  markPrice: number;
+  unrealizedProfit: number;
+  leverage: number;
+  marginMode: string;
+  liquidationPrice?: number;
+  updatedAt: number;
+}
+
 /** 订单成交结果 */
 export interface OrderFill {
   orderId: string;
@@ -71,6 +85,9 @@ export interface TradingClient {
 
   /** 获取账户余额 */
   getBalances(): Promise<AccountBalance[]>;
+
+  /** 获取交易所当前持仓；现货客户端返回空数组。 */
+  getPositions(symbol?: string): Promise<ExchangePosition[]>;
 
   /** 设置永续合约杠杆；现货客户端可以不实现。 */
   setLeverage?(symbol: string, leverage: number): Promise<void>;

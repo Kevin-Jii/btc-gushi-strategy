@@ -1,4 +1,4 @@
-import type { AccountBalance, SpotInstrument } from "../exchange/trading-types.js";
+import type { AccountBalance, ExchangePosition, SpotInstrument } from "../exchange/trading-types.js";
 import type { Candle, Position } from "../data/types.js";
 import type { LiveTraderAction } from "../live/live-trader.js";
 import type { AiDecisionMode, AiTradeOutcomeReview, AiValidation } from "../ai/ai-types.js";
@@ -100,6 +100,7 @@ export interface DashboardState {
     estimatedEquity: number;
   };
   position: Position | null;
+  exchangePositions: ExchangePosition[];
   lastAction: LiveTraderAction | null;
   ai: {
     enabled: boolean;

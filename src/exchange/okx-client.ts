@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import WebSocket from "ws";
 import type { Candle } from "../data/types.js";
-import type { AccountBalance, OrderFill, SpotInstrument, SymbolRules, TradingClient, UserDataEvent } from "./trading-types.js";
+import type { AccountBalance, ExchangePosition, OrderFill, SpotInstrument, SymbolRules, TradingClient, UserDataEvent } from "./trading-types.js";
 import type { OkxConfig } from "./okx-config.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -82,6 +82,21 @@ export class OkxClient implements TradingClient {
       minNotional: 0,
       contractValue: this.config.instrumentType === "SWAP" ? asNumber(row.ctVal, 1) : 1,
     };
+  }
+
+  public async getPositions(symbol?: string): Promise<ExchangePosition[]> {
+    if (this.config.instrumentType !== "SWAP") return [];
+    const response = await this.privateRequest("GET", "/api/v5/account/positions", undefined, { instType: "SWAP", ...(symbol ? { instId: symbol } : {}) });
+    const rows = Array.isArray(response.data) ? response.data as JsonRecord[] : [];
+    return rows.flatMap((row): ExchangePosition[] => {
+      const rawQuantity = asNumber(row.pos);
+      if (rawQuantity === 0) return [];
+      const quantity = Math.abs(rawQuantity) * Math.max(asNumber(row.ctVal, 1), 1e-12);
+      const side = String(row.posSide ?? "net") === "short" || (String(row.posSide ?? "net") === "net" && rawQuantity < 0) ? "short" : "long";
+      const entryPrice = asNumber(row.avgPx ?? row.openAvgPx);
+      const markPrice = asNumber(row.markPx ?? row.last);
+      return [{ symbol: String(row.instId ?? symbol ?? this.config.instId), side, quantity, entryPrice, markPrice, unrealizedProfit: asNumber(row.upl), leverage: asNumber(row.lever, 1), marginMode: String(row.mgnMode ?? "cross"), ...(asNumber(row.liqPx) > 0 ? { liquidationPrice: asNumber(row.liqPx) } : {}), updatedAt: asNumber(row.uTime, Date.now()) }];
+    });
   }
 
   public async getBalances(): Promise<AccountBalance[]> {

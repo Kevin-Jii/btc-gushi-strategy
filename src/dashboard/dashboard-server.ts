@@ -53,6 +53,7 @@ function formatNumber(value: number): string {
 
 class DashboardRuntime {
   private balances: AccountBalance[] = [];
+  private exchangePositions: import("../exchange/trading-types.js").ExchangePosition[] = [];
   private lastAccountUpdate = 0;
   private accountError: string | null = null;
   private latestPrice = 0;
@@ -163,6 +164,7 @@ class DashboardRuntime {
         estimatedEquity,
       },
       position: status.position,
+      exchangePositions: this.exchangePositions,
       lastAction: status.lastAction,
       ai: {
         enabled: this.aiAdvisor.enabled,
@@ -378,12 +380,13 @@ class DashboardRuntime {
     if (this.refreshing) return;
     this.refreshing = true;
     try {
-      const next = await this.runtime.client.getBalances();
+      const [next, positions] = await Promise.all([this.runtime.client.getBalances(), this.runtime.client.getPositions(this.trader.symbol)]);
       const changed = next.some((balance) => {
         const previous = this.previousBalance.get(balance.asset) ?? 0;
         return Math.abs(previous - balance.free - balance.locked) > 1e-12;
       });
       this.balances = next;
+      this.exchangePositions = positions;
       this.previousBalance = new Map(next.map((balance) => [balance.asset, balance.free + balance.locked]));
       this.lastAccountUpdate = Date.now();
       this.accountError = null;
