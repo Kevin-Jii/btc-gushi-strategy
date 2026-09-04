@@ -35,7 +35,6 @@
   },
   "dependencies": {
     "@binance/spot": "^32.0.2",
-    "@douyinfe/semi-ui": "^2.102.0",
     "@langchain/core": "^1.2.9",
     "@langchain/mcp-adapters": "^1.1.4",
     "@langchain/openai": "^1.5.10",

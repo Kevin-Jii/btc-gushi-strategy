@@ -1,13 +1,4 @@
 import {
-  Button,
-  Divider,
-  Layout,
-  Nav,
-  Select,
-  Tag,
-  Typography,
-} from "@douyinfe/semi-ui";
-import {
   CandlestickChart,
   Grid3X3,
   Home,
@@ -19,9 +10,10 @@ import {
 } from "lucide-react";
 import type { ReactElement } from "react";
 import type { DashboardState } from "../../../src/dashboard/dashboard-types";
-
-const { Header } = Layout;
-const { Text, Title } = Typography;
+import { Button } from "../ui/Button";
+import { Divider } from "../ui/Divider";
+import { Select } from "../ui/Select";
+import { Tag } from "../ui/Tag";
 
 function ConnectionBadge({
   connected,
@@ -57,56 +49,39 @@ export function DashboardHeader({
   onOpenAi: () => void;
 }): ReactElement {
   return (
-    <Header className="app-header">
-      <div className="header-brand" text="ink">
+    <header className="app-header">
+      <div className="header-brand">
         <div className="brand-logo shadow-[0_0_22px_rgba(247,147,26,.2)]">
           ₿
         </div>
         <div className="brand-text">
-          <Title heading={5} className="brand-title">
+          <h5 className="brand-title text-sm font-semibold text-slate-100">
             葛氏策略
-          </Title>
-          <Text type="tertiary" size="small" className="brand-subtitle">
+          </h5>
+          <p className="brand-subtitle text-xs text-slate-500">
             {state.symbol}
-          </Text>
+          </p>
         </div>
       </div>
-      <Nav
-        className="header-nav"
-        mode="horizontal"
-        selectedKeys={[activeNav]}
-        onSelect={(data) => onNavChange(String(data.itemKey))}
-      >
-        <Nav.Item icon={<Home size={16} />} text="工作台" itemKey="dashboard" />
-        <Nav.Item
-          icon={<CandlestickChart size={16} />}
-          text="行情分析"
-          itemKey="market"
-        />
-        <Nav.Item
-          icon={<Grid3X3 size={16} />}
-          text="订单管理"
-          itemKey="orders"
-        />
-        <Nav.Item
-          icon={<LineChart size={16} />}
-          text="回测分析"
-          itemKey="backtest"
-        />
-      </Nav>
+      <nav className="header-nav flex gap-1">
+        <button className={`nav-item ${activeNav === "dashboard" ? "active" : ""}`} onClick={() => onNavChange("dashboard")}><Home size={16} />工作台</button>
+        <button className={`nav-item ${activeNav === "market" ? "active" : ""}`} onClick={() => onNavChange("market")}><CandlestickChart size={16} />行情分析</button>
+        <button className={`nav-item ${activeNav === "orders" ? "active" : ""}`} onClick={() => onNavChange("orders")}><Grid3X3 size={16} />订单管理</button>
+        <button className={`nav-item ${activeNav === "backtest" ? "active" : ""}`} onClick={() => onNavChange("backtest")}><LineChart size={16} />回测分析</button>
+      </nav>
       <div className="header-right">
         <div className="connection-status">
           <ConnectionBadge connected={state.connection.market} label="行情" />
           <ConnectionBadge connected={state.connection.userData} label="账户" />
         </div>
-        <Divider layout="vertical" margin="8px" />
+        <Divider />
         <div className="header-actions">
-          <Button theme="borderless" icon={<Wallet size={15} />} onClick={onOpenWallet}>钱包</Button>
-          <Button theme="borderless" icon={<Brain size={15} />} onClick={onOpenAi}>AI 审核</Button>
+          <Button variant="ghost" size="small" onClick={onOpenWallet}><Wallet size={15} />钱包</Button>
+          <Button variant="ghost" size="small" onClick={onOpenAi}><Brain size={15} />AI 审核</Button>
         </div>
-        <Divider layout="vertical" margin="8px" />
+        <Divider />
         <div className="mode-indicator">
-          <Tag color={state.mode === "live" ? "red" : "blue"} size="small">
+          <Tag color={state.mode === "live" ? "red" : "blue"}>
             {state.mode === "live"
               ? "真实盘"
               : state.mode === "demo"
@@ -115,20 +90,16 @@ export function DashboardHeader({
           </Tag>
           <Select
             className="symbol-selector"
-            showClear
-            filter
             value={state.symbol}
             onChange={(value) => onSymbolChange(String(value))}
-            optionList={state.instruments.map((instrument) => ({
+            options={state.instruments.map((instrument) => ({
               value: instrument.symbol,
               label: `${instrument.symbol} · ${instrument.baseAsset}/${instrument.quoteAsset}`,
             }))}
-            filter
-            searchable
             placeholder="选择交易对"
           />
         </div>
       </div>
-    </Header>
+    </header>
   );
 }

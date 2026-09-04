@@ -1,5 +1,5 @@
-import { Tag } from "@douyinfe/semi-ui";
 import type { ReactElement } from "react";
 import type { DashboardOrder } from "../../../src/dashboard/dashboard-types";
+import { Tag } from "../ui/Tag";
 import { formatMoney, formatTime } from "../ui";
 export function OrderHistoryPanel({ orders }: { orders: DashboardOrder[] }): ReactElement { return <div className="data-panel"><div className="data-panel-title">策略下单历史</div><div className="order-table"><div className="order-table-head"><span>策略</span><span>方向 / 交易对</span><span>价格</span><span>数量</span><span>时间</span></div>{orders.length === 0 ? <div className="panel-empty">暂无策略订单</div> : orders.map((order) => <div className="order-row" key={order.id}><span>{order.strategyName}<small>{order.strategyId}</small></span><span><Tag color={order.side === "BUY" ? "green" : "red"}>{order.side === "BUY" ? "买入" : "卖出"}</Tag><small>{order.symbol}</small></span><span>{formatMoney(order.price)}</span><span>{order.quantity.toFixed(6)}</span><span>{formatTime(order.timestamp)}</span></div>)}</div></div>; }
