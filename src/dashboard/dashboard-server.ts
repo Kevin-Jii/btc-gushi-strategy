@@ -57,6 +57,7 @@ class DashboardRuntime {
   private exchangePositions: import("../exchange/trading-types.js").ExchangePosition[] = [];
   private lastAccountUpdate = 0;
   private accountError: string | null = null;
+  private startupError: string | null = null;
   private latestPrice = 0;
   private activityId = 0;
   private previousBalance = new Map<string, number>();
@@ -98,6 +99,7 @@ class DashboardRuntime {
   }
 
   public async start(): Promise<void> {
+    this.startupError = null;
     if (this.repository) {
       await this.repository.initialize();
       const [orders] = await Promise.all([this.repository.loadRecentOrders(100), this.refreshPerformance()]);
@@ -113,8 +115,14 @@ class DashboardRuntime {
     this.latestPrice = this.trader.getStatus().latestCandle?.close ?? 0;
     try { this.instruments = await this.runtime.client.getSpotInstruments(this.runtime.quoteAsset); } catch (error) { logger.warn(`加载 OKX 交易对失败：${error instanceof Error ? error.message : String(error)}`); }
     await this.refreshAccount();
+    this.startupError = null;
     this.addActivity({ type: "system", title: "交易服务已启动", detail: `${this.runtime.platform.toUpperCase()} ${this.runtime.mode} · ${this.trader.symbol} · ${this.runtime.interval}` });
     setInterval(() => { void this.refreshAccount(); void this.refreshLatestPrice(); void this.persistMonitorSnapshot(); }, 3000);
+  }
+
+  public reportStartupError(error: unknown): void {
+    this.startupError = errorMessage(error);
+    this.addActivity({ type: "system", title: "交易服务初始化失败", detail: this.startupError });
   }
 
   public state(): DashboardState {
@@ -137,7 +145,7 @@ class DashboardRuntime {
         market: status.marketConnected,
         userData: status.userDataConnected,
         lastAccountUpdate: this.lastAccountUpdate,
-        error: this.accountError,
+        error: this.startupError ?? this.accountError,
       },
       market: {
         latestPrice,
@@ -495,7 +503,6 @@ function errorMessage(error: unknown): string {
 
 async function main(): Promise<void> {
   const runtime = new DashboardRuntime();
-  await runtime.start();
   const routes: Record<string, DashboardRoute> = {
     "/api/state": { method: "GET", handler: async (_request, response) => { json(response, 200, runtime.state()); } },
     "/api/instruments": { method: "GET", errorStatus: 500, handler: async (_request, response) => { json(response, 200, await runtime.getInstruments()); } },
@@ -529,17 +536,30 @@ async function main(): Promise<void> {
       void route.handler(request, response, requestUrl).catch((error) => json(response, route.errorStatus ?? 400, { error: errorMessage(error) }));
       return;
     }
-    const filePath = safeFilePath(requestUrl.pathname);
+    let filePath = safeFilePath(requestUrl.pathname);
     if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-      json(response, 404, { error: "页面资源不存在，请先运行 npm run build:web" });
-      return;
+      if (request.method === "GET" && !path.extname(requestUrl.pathname)) filePath = path.join(webDist, "index.html");
+      else {
+        json(response, 404, { error: "页面资源不存在，请先运行 npm run build:web" });
+        return;
+      }
     }
-    response.writeHead(200, { "Content-Type": contentType(filePath), "Cache-Control": "no-store" });
-    fs.createReadStream(filePath).pipe(response);
+    const isHashedAsset = requestUrl.pathname.startsWith("/assets/");
+    response.writeHead(200, { "Content-Type": contentType(filePath), "Cache-Control": isHashedAsset ? "public, max-age=31536000, immutable" : "no-cache" });
+    fs.createReadStream(filePath).on("error", (error) => {
+      if (!response.headersSent) json(response, 500, { error: errorMessage(error) });
+      else response.destroy(error);
+    }).pipe(response);
   });
   const websocketServer = new WebSocketServer({ server });
   websocketServer.on("connection", (socket) => runtime.addClient(socket));
-  server.listen(port, host, () => logger.info(`Dashboard running at http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`));
+  server.listen(port, host, () => {
+    logger.info(`Dashboard running at http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`);
+    void runtime.start().catch((error: unknown) => {
+      runtime.reportStartupError(error);
+      logger.error(`交易服务初始化失败，静态页面仍保持可用：${errorMessage(error)}`);
+    });
+  });
 
   const shutdown = async (): Promise<void> => {
     await runtime.stop();
@@ -552,6 +572,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  logger.error(`Dashboard 启动失败：${error instanceof Error ? error.message : String(error)}`);
+  logger.error(`Dashboard HTTP 服务启动失败：${errorMessage(error)}`);
   process.exitCode = 1;
 });
