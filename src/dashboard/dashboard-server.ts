@@ -21,6 +21,7 @@ import type { PersistedAiReviewRecord, PersistedOrder, StrategyPerformance } fro
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const webDist = path.join(projectRoot, "web", "dist");
 const port = Number(process.env.DASHBOARD_PORT ?? 8787);
+const host = process.env.DASHBOARD_HOST ?? "0.0.0.0";
 
 function json(response: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -538,7 +539,7 @@ async function main(): Promise<void> {
   });
   const websocketServer = new WebSocketServer({ server });
   websocketServer.on("connection", (socket) => runtime.addClient(socket));
-  server.listen(port, "127.0.0.1", () => logger.info(`Dashboard running at http://127.0.0.1:${port}`));
+  server.listen(port, host, () => logger.info(`Dashboard running at http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}`));
 
   const shutdown = async (): Promise<void> => {
     await runtime.stop();

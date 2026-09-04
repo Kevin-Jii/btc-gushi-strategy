@@ -5,9 +5,11 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc && cp src/persistence/postgres-schema.sql dist/persistence/postgres-schema.sql",
+    "build": "tsc && cp src/persistence/postgres-schema.sql dist/persistence/postgres-schema.sql && npm run build:web",
     "check": "tsc --noEmit",
-    "start": "concurrently --kill-others --names 后端,前端 \"tsx src/dashboard/dashboard-server.ts\" \"vite --host 0.0.0.0\"",
+    "start": "npm run build && node dist/dashboard/dashboard-server.js",
+    "dev": "concurrently --kill-others --names 后端,前端 \"tsx src/dashboard/dashboard-server.ts\" \"vite --host 0.0.0.0\"",
+    "preview": "npm run build && node dist/dashboard/dashboard-server.js",
     "backtest": "tsx src/index.ts",
     "testnet": "tsx src/index.ts testnet",
     "live": "tsx src/index.ts live",
@@ -15,7 +17,8 @@
     "okx-demo": "tsx src/index.ts okx-demo",
     "okx-live": "tsx src/index.ts okx-live",
     "build:web": "vite build",
-    "dashboard": "tsx src/dashboard/dashboard-server.ts",
+    "dashboard": "npm run build && node dist/dashboard/dashboard-server.js",
+    "dashboard:prod": "node dist/dashboard/dashboard-server.js",
     "dashboard:dev": "vite",
     "test": "npm run check && tsx src/ai/langchain-advisor.test.ts"
   },
