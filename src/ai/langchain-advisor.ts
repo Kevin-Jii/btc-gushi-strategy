@@ -33,6 +33,20 @@ const validationSchema = z.object({
 
 type ModelValidation = z.infer<typeof validationSchema>;
 
+/** 模型常用 0 表示“不提供建议”；将无效仓位值移除，再由严格 schema 校验其余字段。 */
+export function sanitizeModelValidation(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const output = { ...(value as Record<string, unknown>) };
+  const margin = Number(output.recommendedMargin);
+  const contracts = Number(output.recommendedContracts);
+  const leverage = Number(output.recommendedLeverage);
+  if (!Number.isFinite(margin) || margin <= 0) delete output.recommendedMargin;
+  if (!Number.isFinite(contracts) || contracts <= 0) delete output.recommendedContracts;
+  if (!Number.isInteger(leverage) || leverage < 1 || leverage > 100) delete output.recommendedLeverage;
+  if (output.positionSizingApproved === true && (!output.recommendedMargin || !output.recommendedContracts || !output.recommendedLeverage)) output.positionSizingApproved = false;
+  return output;
+}
+
 export interface LangChainAdvisorConfig {
   enabled: boolean;
   decisionMode: AiDecisionMode;
@@ -538,9 +552,9 @@ export class LangChainAdvisor {
             )
             .join("")
         : String(content ?? "");
-      return validationSchema.parse(JSON.parse(text));
+      return validationSchema.parse(sanitizeModelValidation(JSON.parse(text)));
     }
-    return validationSchema.parse(raw);
+    return validationSchema.parse(sanitizeModelValidation(raw));
   }
 
   private normalize(
